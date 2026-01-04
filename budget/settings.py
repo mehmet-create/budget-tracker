@@ -11,7 +11,10 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
 from pathlib import Path
+import os
+from dotenv import load_dotenv
 
+load_dotenv()
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -20,12 +23,47 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-_uj(s3i80r*kbwk(%po!hfq+qhu-9v7t$gvf7lj^b7bqx4d$$&'
+SECRET_KEY = os.getenv('SECRET_KEY')
+
+raw_hosts = os.getenv('ALLOWED_HOSTS')
+if raw_hosts:
+    ALLOWED_HOSTS = raw_hosts.split(',')
+else:
+    ALLOWED_HOSTS = []    
+
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
-
-ALLOWED_HOSTS = []
+DEBUG = os.getenv('DEBUG') == 'True'
+if not DEBUG:
+    LOGGING = {
+        'version': 1,
+        'disable_existing_loggers': False,
+        'formatters': {
+            'verbose': {
+                'format': '{levelname} {asctime} {module} {message}',
+                'style': '{',
+            },
+        },
+        'handlers': {
+            'file': {
+                'level': 'ERROR',
+                'class': 'logging.FileHandler',
+                'filename': 'django_error.log',
+                'formatter': 'verbose',
+            },
+            'console': {
+                'level': 'DEBUG',
+                'class': 'logging.StreamHandler',
+            },
+        },
+        'loggers': {
+            'django': {
+                'handlers': ['file', 'console'],
+                'level': 'DEBUG',
+                'propagate': True,
+            },
+        },
+    }
 
 
 # Application definition
@@ -77,11 +115,11 @@ WSGI_APPLICATION = 'budget.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.mysql',
-        'NAME': 'budgettrackerdb',
-        'USER': 'root',
-        'PASSWORD': 'mrDabi24!',
-        'HOST': 'localhost',
-        'PORT': '3306',
+        'NAME': os.getenv('DB_NAME'),
+        'USER': os.getenv('DB_USER'),
+        'PASSWORD': os.getenv('DB_PASSWORD'),
+        'HOST': os.getenv('DB_HOST'),
+        'PORT': os.getenv('DB_PORT'),
     }
 }
 

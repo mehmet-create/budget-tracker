@@ -1,5 +1,13 @@
-.venv/
-__pycache__/
-db.sqlite3
-*.pyc
 .env
+django_error.log
+
+*.sqlite3
+
+.venv/
+env/
+venv/
+__pycache__/
+*.py[cod]
+
+static/
+media/
