@@ -1,0 +1,30 @@
+{% extends 'tracker/base.html' %}
+
+{% block content %}
+<div class="container mt-5">
+    <div class="card shadow p-4">
+        <h2 class="card-title text-danger mb-4">Confirm Deletion</h2>
+
+        <p class="fs-5">
+            Are you sure you want to delete the budget goal for *{{ goal.category }}*?
+        </p>
+        <p class="text-muted">
+            This goal was set for {{ CUSTOM_CURRENCY_SYMBOL }}{{ goal.target_amount|floatformat:2 }}. This action cannot be undone.
+        </p>
+
+        <hr>
+
+        <form method="post">
+            {% csrf_token %}
+            
+            <button type="submit" class="btn btn-danger me-2">
+                Yes, Delete Goal
+            </button>
+            
+            <a href="{% url 'goals_list' %}" class="btn btn-secondary">
+                No, Go Back
+            </a>
+        </form>
+    </div>
+</div>
+{% endblock %}

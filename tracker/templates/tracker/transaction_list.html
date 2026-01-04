@@ -1,0 +1,172 @@
+{% extends 'tracker/base.html' %}
+{% load tracker_filters %}
+{% block content %}
+<div class="container mt-4">
+    
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h3>Transaction History</h3>
+        <a href="{% url 'add_transaction' %}" class="btn btn-success btn-shadow-sm">
+            <i class="fas fa-plus me-2"></i> Add New
+        </a>
+    </div>
+
+    <hr>
+
+    <p>
+        <button class="btn btn-info shadow-sm" type="button" data-bs-toggle="collapse" data-bs-target="#filterCard" aria-expanded="false" aria-controls="filterCard">
+            <i class="fas fa-filter me-2"></i> Filter Transactions
+        </button>
+    </p>
+
+
+    <div class="collapse {% if current_query or current_start_date or current_end_date %}show{% endif %}" id="filterCard">
+        <div class="card p-3 mb-4 shadow-sm">
+            <h5 class="card-title mb-3">Filter Transactions</h5>
+            
+            <form method="GET" action="{% url 'transactions' %}" class="row g-3 align-items-end">
+                
+                {% if current_sort %}
+                    <input type="hidden" name="sort" value="{{ current_sort }}">
+                {% endif %}
+
+                <div class="col-md-12 mb-3">
+                    <label for="keywordSearch" class="form-label">Search Keywords (Description/Category)</label>
+                    <input type="text" class="form-control" id="keywordSearch" name="q" 
+                        placeholder="e.g., Groceries, Starbucks, Rent"
+                        value="{{ current_query|default_if_none:'' }}">
+                </div>
+                
+                <div class="col-md-4">
+                    <label for="startDate" class="form-label">Start Date</label>
+                    <input type="date" class="form-control" id="startDate" name="start_date" 
+                        value="{{ current_start_date|default_if_none:'' }}">
+                </div>
+                
+                <div class="col-md-4">
+                    <label for="endDate" class="form-label">End Date (Optional)</label>
+                    <input type="date" class="form-control" id="endDate" name="end_date"
+                        value="{{ current_end_date|default_if_none:'' }}">
+                </div>
+                
+                <div class="col-md-4 text-end">
+                    <button type="submit" class="btn btn-primary">Apply Filter</button>
+                    <a href="{% url 'transactions' %}" class="btn btn-secondary ms-2">Clear All</a>
+                </div>
+                
+            </form>
+        </div>
+    </div>
+
+    <div class="row g-3 mb-4">
+        <div class="col-md-4">
+            <div class="card shadow-sm border-start border-4 border-success">
+                <div class="card-body">
+                    <h6 class="text-muted mb-1">
+                        Total Income {% if current_start_date or current_end_date %}for Filtered Period{% else %} (All Time){% endif %}
+                    </h6>
+                    <p class="fs-5 fw-bold text-success">{% currency total_income_period %}</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card shadow-sm border-start border-4 border-danger">
+                <div class="card-body">
+                    <h6 class="text-muted mb-1">
+                        Total Expense {% if current_start_date or current_end_date %}for Filtered Period{% else %} (All Time){% endif %}
+                    </h6>
+                    <p class="fs-5 fw-bold text-danger">{% currency total_expense_period %}</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card shadow-sm border-start border-4 
+                {% if total_balance_period >= 0 %}border-success{% else %}border-danger{% endif %}">
+                <div class="card-body">
+                    <h6 class="text-muted mb-1">
+                        Total Balance {% if current_start_date or current_end_date %}for Filtered Period{% else %} (All Time){% endif %}
+                    </h6>
+                    <p class="fs-5 fw-bold 
+                        {% if total_balance_period >= 0 %}text-success{% else %}text-danger{% endif %}">
+                        {% currency total_balance_period %}
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+    <hr>
+    <h3 class="mb-3">Recent Transactions</h3>
+    
+    {% if transactions %}
+    <div class="table-responsive">
+        <table class="table table-striped table-hover shadow-sm">
+            <thead class="table-dark">
+                <tr>
+                    <th>
+                        Date 
+                    </th>
+                    
+                    <th>Type</th>
+                    
+                    <th>
+                        Category 
+                    </th>
+                    
+                    <th>Description</th>
+                    
+                    <th>
+                        Amount ({{ CUSTOM_CURRENCY_SYMBOL }}) 
+                    </th>
+                    
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for transaction in transactions %}
+                <tr class="{% if transaction.type == 'Income' %}table-success{% elif transaction.type == 'Expense' %}table-danger{% endif %}">
+                    <td>{{ transaction.date }}</td>
+                    <td>{{ transaction.type }}</td>
+                    <td>{{ transaction.category|title }}</td>
+                    <td>{{ transaction.description|default:"None" }}</td>
+                    <td>{% currency transaction.amount %}</td>
+                    <td>
+                        <a href="{% url 'edit_transaction' pk=transaction.pk %}" class="btn btn-sm btn-outline-info me-1">Edit</a>
+                        <a href="{% url 'delete_transaction' pk=transaction.pk %}" class="btn btn-sm btn-outline-danger">Delete</a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p class="alert alert-warning">No transactions match your current filters.</p>
+    {% endif %}
+
+    {% if transactions.has_other_pages %}
+    <nav aria-label="Transaction Pagination" class="mt-4">
+        <ul class="pagination justify-content-center">
+            
+            {% if transactions.has_previous %}
+                <li class="page-item"><a class="page-link" href="?page={{ transactions.previous_page_number }}&q={{ current_query|default_if_none:'' }}&start_date={{ current_start_date|default_if_none:'' }}&end_date={{ current_end_date|default_if_none:'' }}">Previous</a></li>
+            {% else %}
+                <li class="page-item disabled"><span class="page-link">Previous</span></li>
+            {% endif %}
+
+            {% for i in transactions.paginator.page_range %}
+                {% if transactions.number == i %}
+                    <li class="page-item active" aria-current="page"><span class="page-link">{{ i }}</span></li>
+                {% else %}
+                    <li class="page-item"><a class="page-link" href="?page={{ i }}&q={{ current_query|default_if_none:'' }}&start_date={{ current_start_date|default_if_none:'' }}&end_date={{ current_end_date|default_if_none:'' }}">{{ i }}</a></li>
+                {% endif %}
+            {% endfor %}
+
+            {% if transactions.has_next %}
+                <li class="page-item"><a class="page-link" href="?page={{ transactions.next_page_number }}&q={{ current_query|default_if_none:'' }}&start_date={{ current_start_date|default_if_none:'' }}&end_date={{ current_end_date|default_if_none:'' }}">Next</a></li>
+            {% else %}
+                <li class="page-item disabled"><span class="page-link">Next</span></li>
+            {% endif %}
+
+        </ul>
+    </nav>
+    {% endif %}
+</div>
+{% endblock %}

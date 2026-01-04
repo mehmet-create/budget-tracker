@@ -1,0 +1,121 @@
+{% extends 'tracker/base.html' %}
+{% load tracker_filters %}
+
+{% block content %}
+{% if user.is_authenticated %}
+
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-baseline mb-3 flex-wrap">
+        <h2 class="fw-bold mb-1">Dashboard</h2>
+    </div>
+
+    <hr>
+    <div class="row g-3 mb-4">
+        <div class="col-md-4">
+            <div class="card shadow-sm border-start border-4 border-success">
+                <div class="card-body">
+                    <h6 class="text-muted mb-1">Total Income</h6>
+                    <p class="fs-5 fw-bold text-success">{% currency total_income %}</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-4">
+            <div class="card shadow-sm border-start border-4 border-danger">
+                <div class="card-body">
+                    <h6 class="text-muted mb-1">Total Expense</h6>
+                    <p class="fs-5 fw-bold text-danger">{% currency total_expense %}</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-4">
+            <div class="card shadow-sm border-start border-4 border-primary">
+                <div class="card-body">
+                    <h6 class="text-muted mb-1">Balance</h6>
+                    <p class="fs-5 fw-bold {% if balance >= 0 %}text-success{% else %}text-danger{% endif %}">
+                        {% currency balance %}
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Monthly Budget Goals -->
+<div class="card shadow-sm mb-4">
+    <div class="card-header bg-info text-dark d-flex justify-content-between align-items-center fw-semibold">
+        <span>
+            Monthly Budget Goals ({{ current_month }}/{{ current_year }}) ({{ CUSTOM_CURRENCY_SYMBOL }})
+        </span>
+        <a href="{% url 'goals_list' %}" class="btn btn-sm btn-dark shadow-sm">
+            <i class="bi bi-gear-fill me-1"></i> Manage
+        </a>
+    </div>
+
+    <div class="card-body">
+        {% if goal_progress %}
+            {% for goal in goal_progress %}
+                <div class="mb-3 p-2 rounded shadow-sm goal-item-row border">
+                    <div class="d-flex justify-content-between align-items-center mb-1">
+                        <strong>{{ goal.category }}</strong>
+                        <span class="badge 
+                            {% if goal.status == 'exceeded' %}bg-danger
+                            {% elif goal.status == 'warning' %}bg-warning text-dark
+                            {% else %}bg-success
+                            {% endif %}">
+                            {{ goal.percent }}%
+                        </span>
+                    </div>
+                    
+                    <small class="text-muted">{% currency goal.spent %} spent / {% currency goal.target %} target</small>
+                    
+                    <div class="progress mt-1" style="height: 10px;">
+                        <div class="progress-bar 
+                            {% if goal.status == 'exceeded' %}bg-danger
+                            {% elif goal.status == 'warning' %}bg-warning
+                            {% else %}bg-success
+                            {% endif %}" 
+                            role="progressbar" 
+                            style="width: {% if goal.percent > 100 %}100{% else %}{{ goal.percent }}{% endif %}%;"
+                            aria-valuenow="{{ goal.percent }}" 
+                            aria-valuemin="0" 
+                            aria-valuemax="100">
+                        </div>
+                    </div>
+                </div>
+            {% endfor %}
+        {% else %}
+            <div class="alert alert-info mb-0 text-center">
+                No budget goals set for this month. 
+                <a href="{% url 'goals_list' %}" class="alert-link">Setup your budget.</a>
+            </div>
+        {% endif %}
+    </div>
+</div>
+
+{% else %}
+<div class="container mt-5" style="max-width: 400px;">
+    <h3 class="mb-3">Login</h3>
+    <form action="{% url 'dashboard' %}" method="POST">
+        {% csrf_token %}
+        <div class="mb-3">
+            <input type="text" class="form-control" name="username" placeholder="Username" required>
+        </div>
+        <div class="mb-3">
+            <input type="password" class="form-control" name="password" placeholder="Password" required>
+        </div>
+        <button type="submit" class="btn btn-primary w-100">Login</button>
+    </form>
+    
+    {% if message %}
+    <div class="alert alert-warning alert-dismissible fade show mt-3" role="alert">
+        {{ message }}
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
+    {% endif %}
+</div>
+{% endif %}
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script> 
+
+{% endblock %}

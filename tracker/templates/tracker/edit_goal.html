@@ -1,0 +1,24 @@
+{% extends 'tracker/base.html' %}
+
+{% block content %}
+<div class="container mt-5">
+    <h2>Edit Goal: {{ goal.get_category_display }}</h2>
+    
+    <form method="post">
+        {% csrf_token %}
+        
+        <div class="mb-3">
+            {{ form.category.label_tag }}
+            {{ form.category }}
+        </div>
+
+        <div class="mb-3">
+            {{ form.target_amount.label_tag }}
+            {{ form.target_amount }}
+        </div>
+        
+        <button type="submit" class="btn btn-warning">Save Changes</button>
+        <a href="{% url 'goals_list' %}" class="btn btn-secondary">Cancel</a>
+    </form>
+</div>
+{% endblock %}

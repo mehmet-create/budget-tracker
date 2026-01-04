@@ -1,0 +1,137 @@
+{% extends 'tracker/base.html' %}
+
+{% block content %}
+
+<h2 class="
+    {% if balance_status == 'positive' %} 
+        text-success 
+    {% else %} 
+        text-danger 
+    {% endif %}
+">
+    Financial Charts
+</h2>
+<div class="
+    {% if balance_status == 'positive' %} 
+        legend-green 
+    {% else %} 
+        legend-red 
+    {% endif %}
+">
+    Financial Overview ({{ CUSTOM_CURRENCY_SYMBOL }})
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<style>
+    canvas {
+        margin-bottom: 50px;
+        max-width: 600px;
+    }
+</style>
+
+<h3>Overall Financial Summary</h3>
+<canvas id="financeChart"></canvas>
+
+<script>
+const barCtx = document.getElementById('financeChart').getContext('2d');
+
+const balanceColor = '{{ balance_color }}';
+
+new Chart(barCtx, {
+    type: 'bar',
+    data: {
+        labels: ['Income', 'Expense', 'Balance'],
+        datasets: [{
+            label: 'Financial Overview ({{ CUSTOM_CURRENCY_SYMBOL }})',
+            data: [
+                {{ total_income }},
+                {{ total_expense }},
+                {{ balance }}
+            ],
+            backgroundColor: ['#4CAF50', '#F44336', balanceColor], 
+            borderColor: ['#388E3C', '#D32F2F', balanceColor], 
+            borderWidth: 1
+        }]
+    },
+    options: {
+        responsive: true,
+        plugins: {
+            legend: {
+                display: false
+            }
+        },
+        scales: {
+            y: { beginAtZero: true }
+        }
+    }
+});
+</script>
+
+
+<!-- =======================
+     PIE CHART
+=========================== -->
+<h3>Expenses by Category</h3>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
+
+<canvas id="expensePie"></canvas>
+
+<div style="max-width: 500px; margin: auto; padding: 20px;">
+    <canvas id="expensePie"></canvas>
+</div>
+
+<script>
+const pieCtx = document.getElementById('expensePie').getContext('2d');
+
+new Chart(pieCtx, {
+    type: 'pie',
+    data: {
+        labels: {{ category_labels|safe|title }},
+        datasets: [{
+            data: {{ category_values|safe|title }},
+            backgroundColor: [
+                '#FF6384', '#36A2EB', '#FFCE56', '#4CAF50',
+                '#9C27B0', '#FF9800', '#009688', '#673AB7'
+            ],
+            borderWidth: 2
+        }]
+    },
+    plugins: [ChartDataLabels],
+    options: {
+        responsive: true,
+        maintainAspectRatio: true,
+        layout: {
+            padding: 40
+        },
+        plugins: {
+            legend: {
+                position: 'bottom',
+                labels: {
+                    padding: 20
+                }
+            },
+            datalabels: {
+                color: '#444',
+                anchor: 'end',  
+                align: 'end',   
+                offset: 10,   
+                font: {
+                    weight: 'bold',
+                    size: 12
+                },
+                formatter: (value, ctx) => {
+                    let sum = 0;
+                    let dataArr = ctx.chart.data.datasets[0].data;
+                    dataArr.map(data => { sum += data; });
+                    let percentage = (value * 100 / sum).toFixed(1) + "%";
+                    return percentage;
+                }
+            }
+        }
+    }
+});
+</script>
+
+
+{% endblock %}

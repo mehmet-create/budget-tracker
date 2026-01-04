@@ -1,0 +1,41 @@
+{% extends 'tracker/base.html' %}
+
+{% block content %}
+<div class="container mt-5">
+    <div class="card shadow p-4">
+        <h2 class="card-title text-danger mb-4">Confirm Transaction Deletion</h2>
+
+        <p class="fs-5">
+            Are you sure you want to delete the following transaction?
+        </p>
+        
+        <ul class="list-group list-group-flush mb-4">
+            <li class="list-group-item"><strong>Type:</strong> {{ transaction.type }}</li>
+            <li class="list-group-item"><strong>Category:</strong> {{ transaction.category }}</li>
+            <li class="list-group-item"><strong>Amount:</strong> {{ CUSTOM_CURRENCY_SYMBOL }}{{ transaction.amount }}</li>
+            <li class="list-group-item"><strong>Date:</strong> {{ transaction.date }}</li>
+            {% if transaction.description %}
+            <li class="list-group-item"><strong>Description:</strong> {{ transaction.description }}</li>
+            {% endif %}
+        </ul>
+
+        <p class="text-muted">
+            This action cannot be undone.
+        </p>
+
+        <hr>
+
+        <form method="post">
+            {% csrf_token %}
+            
+            <button type="submit" class="btn btn-danger me-2">
+                Yes, Delete Transaction
+            </button>
+            
+            <a href="{% url 'transactions' %}" class="btn btn-secondary">
+                No, Go Back
+            </a>
+        </form>
+    </div>
+</div>
+{% endblock content %}
