@@ -32,9 +32,16 @@ if raw_hosts:
 else:
     ALLOWED_HOSTS = []    
 
+ALLOWED_HOSTS = ['127.0.0.1', 'localhost']
 
-CSRF_TRUSTED_ORIGINS = [f"https://{host}" for host in ALLOWED_HOSTS if 'ngrok-free.dev' in host or 'ngrok-free.app' in host]
+render_host = os.environ.get('RENDER_EXTERNAL_HOSTNAME')
+if render_host:
+    ALLOWED_HOSTS.append(render_host)
+
+CSRF_TRUSTED_ORIGINS = [f"https://{render_host}"] if render_host else []
+
 # SECURITY WARNING: don't run with debug turned on in production!
+
 DEBUG = os.getenv('DEBUG') == 'True'
 if not DEBUG:
     LOGGING = {
