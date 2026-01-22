@@ -1,37 +1,61 @@
 {% extends 'tracker/base.html' %}
 
+
+{% block messages %}
+{% endblock %}
+
 {% block content %}
+<div class="login-card">
+    <div class="container d-flex justify-content-center align-items-center" style="height:80vh;">
+        <div class="card shadow p-4" style="width: 400px;">
+            <h3 class="text-center mb-4">Login</h3>
 
-<div class="container d-flex justify-content-center align-items-center" style="height:80vh;">
-    <div class="card shadow p-4" style="width: 400px;">
-        <h3 class="text-center mb-4">Login</h3>
+    {% if messages %}
+        {% for message in messages %}
+        <div class="alert alert-danger alert-dismissible fade show">
+            {{ message }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+        {% endfor %}
+    {% endif %}        
 
-        {% if messages %}
-            {% for message in messages %}
-                {% if message.tags == 'error' %} 
-                    <div class="alert alert-danger mb-3" role="alert">
-                        {{ message }}
-                    </div>
-                {% endif %}
-            {% endfor %}
-        {% endif %}
-        <form method="POST">
+        <form method="POST" id="loginForm">
             {% csrf_token %}
             <div class="mb-3">
-                <label>Username</label>
-                <input type="text" name="username" class="form-control" placeholder="Enter username" required>
+                <label class="form-label">Username</label>
+                <input type="text" name="username" class="form-control" placeholder="Enter username" required autofocus>
             </div>
             <div class="mb-3">
-                <label>Password</label>
+                <div class="d-flex justify-content-between">
+                    <label class="form-label">Password</label>
+                    <a href="{% url 'password_reset' %}" class="small text-decoration-none text-muted">Forgot?</a>
+                </div>
                 <input type="password" name="password" class="form-control" placeholder="Enter password" required>
             </div>
-            <button type="submit" class="btn btn-primary w-100">Login</button>
+            
+            <button type="submit" class="btn btn-primary w-100" id="submitBtn">
+                <span id="btnText">Login</span>
+                <span id="btnSpinner" class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
+            </button>
         </form>
         
         <p class="text-center mt-3 small">
-            Don't have an account? <a href="{% url 'register' %}">Create Account</a>
+            Don't have an account? <a href="{% url 'register' %}" class="text-decoration-none">Create Account</a>
         </p>
+        </div>
     </div>
 </div>
 
+<script>
+    const loginForm = document.getElementById('loginForm');
+    const submitBtn = document.getElementById('submitBtn');
+    const btnText = document.getElementById('btnText');
+    const btnSpinner = document.getElementById('btnSpinner');
+
+    loginForm.addEventListener('submit', function() {
+        submitBtn.disabled = true;
+        btnText.textContent = "Authenticating...";
+        btnSpinner.classList.remove('d-none');
+    });
+</script>
 {% endblock %}

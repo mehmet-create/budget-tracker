@@ -1,7 +1,9 @@
 from django.urls import path
 from . import views
 from .views import CustomPasswordChangeView
-
+from django.contrib.auth import views as auth_views
+from django_ratelimit.decorators import ratelimit
+from .decorators import redirect_if_unverified
 urlpatterns = [
     path('', views.dashboard, name='dashboard'),
     path('transactions/', views.transaction_list, name='transactions'),
@@ -12,6 +14,9 @@ urlpatterns = [
     path('delete/<int:pk>/', views.delete_transaction, name='delete_transaction'),
     path('login/', views.login_view, name='login'),
     path('register/', views.register_view, name='register'),
+    path('verify-registration/', views.verify_registration, name='verify_registration'),
+    path('resend-code/', views.resend_code, name='resend_registration_code'),
+    path('cancel-registration/', views.cancel_registration, name='cancel_registration'),
     path('logout/', views.logout_view, name='logout'),
     path('goals/<int:year>/<int:month>/', views.goals_list, name='goals_history'),
     path('goals/', views.goals_list, name='goals_list'),
@@ -21,10 +26,33 @@ urlpatterns = [
     path('goals/edit/<int:pk>/', views.edit_goal, name='edit_goal'),
     path('goals/delete/<int:pk>/', views.delete_goal, name='delete_goal'),
     path('profile/', views.profile_settings, name='profile'),
+    path('profile/verify-email/', views.verify_email_change, name='verify_email_change'),
+    path('profile/verify-email/resend/', views.resend_verification_code, name='resend_email_update_code'),
     path(
         'profile/password/change/', CustomPasswordChangeView.as_view(), name='password_change'
     ),
     path('profile/password/change/done/', views.password_change_done_custom, name='password_change_done'),
+    path('password-reset/', 
+         ratelimit(key='ip', rate='3/h', block=False)(
+             auth_views.PasswordResetView.as_view(
+                 template_name='tracker/password_reset.html',
+                 email_template_name='tracker/password_reset_email.html',
+                 subject_template_name='tracker/password_reset_subject.txt'
+             )
+         ), 
+         name='password_reset'),
+
+    path('password-reset/done/', 
+         auth_views.PasswordResetDoneView.as_view(template_name='tracker/password_reset_done.html'), 
+         name='password_reset_done'),
+
+    path('password-reset-confirm/<uidb64>/<token>/', 
+         auth_views.PasswordResetConfirmView.as_view(template_name='tracker/password_reset_confirm.html'), 
+         name='password_reset_confirm'),
+
+    path('password-reset-complete/', 
+         auth_views.PasswordResetCompleteView.as_view(template_name='tracker/password_reset_complete.html'), 
+         name='password_reset_complete'),
 ]
 
 handler403 = 'tracker.views.custom_403_handler'

@@ -3,6 +3,8 @@ from django.contrib.auth.models import User
 from django.utils import timezone
 from django.contrib.auth import get_user_model
 from django.conf import settings
+from django.db.models.signals import post_save
+from django.dispatch import receiver
 # Create your models here.
 class Transaction(models.Model):
     TYPE_CHOICES = [
@@ -71,7 +73,12 @@ class UserProfile(models.Model):
         default=getattr(settings, 'DEFAULT_CURRENCY_CODE', 'NGN'),
         verbose_name='Preferred Currency'
     )
-
+    last_email_change = models.DateTimeField(null=True, blank=True)
+    pending_email = models.EmailField(null=True, blank=True)
+    email_verification_code = models.CharField(max_length=6, null=True, blank=True)
+    resend_count = models.IntegerField(default=0)
+    cooldown_until = models.DateTimeField(null=True, blank=True)
+    code_generated_at = models.DateTimeField(null=True, blank=True)
     def __str__(self):
         return f"{self.user.username} Profile"
     

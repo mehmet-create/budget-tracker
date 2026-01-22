@@ -14,6 +14,7 @@ from pathlib import Path
 import os
 from dotenv import load_dotenv
 import dj_database_url
+import resend
 
 load_dotenv()
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -42,37 +43,7 @@ CSRF_TRUSTED_ORIGINS = [f"https://{render_host}"] if render_host else []
 
 # SECURITY WARNING: don't run with debug turned on in production!
 
-DEBUG = os.getenv('DEBUG') == 'True'
-if not DEBUG:
-    LOGGING = {
-        'version': 1,
-        'disable_existing_loggers': False,
-        'formatters': {
-            'verbose': {
-                'format': '{levelname} {asctime} {module} {message}',
-                'style': '{',
-            },
-        },
-        'handlers': {
-            'file': {
-                'level': 'ERROR',
-                'class': 'logging.FileHandler',
-                'filename': 'django_error.log',
-                'formatter': 'verbose',
-            },
-            'console': {
-                'level': 'DEBUG',
-                'class': 'logging.StreamHandler',
-            },
-        },
-        'loggers': {
-            'django': {
-                'handlers': ['file', 'console'],
-                'level': 'DEBUG',
-                'propagate': True,
-            },
-        },
-    }
+DEBUG = True
 
 
 # Application definition
@@ -98,6 +69,12 @@ MIDDLEWARE = [
     'whitenoise.middleware.WhiteNoiseMiddleware',
 ]
 
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.db.DatabaseCache',
+        'LOCATION': 'my_rate_limit_cache',
+    }
+}
 ROOT_URLCONF = 'budget.urls'
 
 TEMPLATES = [
@@ -125,7 +102,9 @@ WSGI_APPLICATION = 'budget.wsgi.application'
 if os.getenv('DATABASE_URL'):
     DATABASES = {
         'default': dj_database_url.config(
+            default=os.getenv('DATABASE_URL'),
             conn_max_age=600,
+            conn_health_checks=True,
             ssl_require=True
         )
     }
@@ -136,13 +115,19 @@ else:
             'NAME': os.getenv('DB_NAME'),
             'USER': os.getenv('DB_USER'),
             'PASSWORD': os.getenv('DB_PASSWORD'),
-            'HOST': os.getenv('DB_HOST'),
-            'PORT': os.getenv('DB_PORT'),
+            'HOST': os.getenv('DB_HOST', 'localhost'),
+            'PORT': os.getenv('DB_PORT', '3306'),
         }
     }
 
-
-
+EMAIL_BACKEND = 'django_resend.backends.ResendBackend'
+resend.api_key = os.getenv('RESEND_API_KEY')
+#EMAIL_HOST = 'smtp.gmail.com'
+#EMAIL_PORT = 587
+#EMAIL_USE_TLS = True
+#EMAIL_HOST_USER = os.getenv('DB_USER_EMAIL')
+#EMAIL_HOST_PASSWORD = os.getenv('DB_EMAIL_PASSWORD')
+DEFAULT_FROM_EMAIL = 'onboarding@resend.dev'
 
 # Password validation
 # https://docs.djangoproject.com/en/5.2/ref/settings/#auth-password-validators

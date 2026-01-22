@@ -16,6 +16,20 @@ from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
 from django.conf import settings    
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.http import JsonResponse
+from django_ratelimit.decorators import ratelimit
+from django.http import JsonResponse
+import logging
+from datetime import timedelta
+import random
+from django_ratelimit.core import get_usage
+from django.contrib.auth.models import User
+from django.db import transaction
+from django.views.decorators.http import require_POST
+from django.views.decorators.csrf import csrf_protect
+import resend
+from django.conf import settings
+from datetime import timedelta
+from .utils import send_async_email
 
 # Create your views here.
 @login_required(login_url='login')
@@ -99,36 +113,114 @@ MASTER_TRANSACTION_CATEGORIES = [choice[0] for choice in Transaction._meta.get_f
 
 @login_required(login_url='login')
 def profile_settings(request):
-    if not request.user.is_authenticated:
-        return JsonResponse({'status': 'error', 'message': 'You must be logged in.'}, status=401)
     user = request.user
+    profile = user.userprofile
+
     if request.method == 'POST':
-        form = ProfileUpdateForm(request.POST, instance=user)
-        
-        if form.is_valid():
-            form.save()
-            if request.headers.get('Accept') == 'application/json':
-                return JsonResponse({
-                    'status': 'success',
-                    'message': 'Profile information updated successfully.'
-                }, status=200)
-            messages.success(request, 'Your profile information has been updated successfully.')
-            return redirect('profile_settings')
+        if 'request_email_change' in request.POST:
+            usage = get_usage(request, group='email_change', key='ip', rate='5/h', increment=True)
+            if usage and usage['should_limit']:
+                messages.error(request, "You've requested too many email codes. Please try again in an hour.")
+                return redirect('profile')
+            new_email = request.POST.get('email')
+            if User.objects.filter(email=new_email).exclude(id=user.id).exists():
+                messages.error(request, "This email is already in use.")
+                return redirect('profile')
+            
+            if profile.last_email_change and timezone.now() < profile.last_email_change + timedelta(days=2):
+                messages.error(request, "You can only change your email once every 48 hours.")
+                return redirect('profile')
+
+            code = str(random.randint(100000, 999999))
+            profile.email_verification_code = code
+            profile.pending_email = new_email
+            profile.code_generated_at = timezone.now()
+            profile.save()
+
+            html_content = f"<strong>Your activation code is: {code}</strong>"
+            send_async_email(new_email, "Your Verification Code", html_content)
+            
+            return redirect('verify_email_change')
+
         else:
-            if request.headers.get('Accept') == 'application/json':
-                return JsonResponse({
-                    'status': 'error',
-                    'errors': form.errors,
-                }, status=400)
-            messages.error(request, 'Please correct the errors below.')
+            form = ProfileUpdateForm(request.POST, instance=user)
+            if form.is_valid():
+                form.save()
+                if request.headers.get('Accept') == 'application/json':
+                    return JsonResponse({'status': 'success', 'message': 'Profile updated.'})
+                messages.success(request, 'Profile updated successfully.')
+                return redirect('profile')
+            else:
+                messages.error(request, 'Please correct the errors below.')
+    
     else:
         form = ProfileUpdateForm(instance=user)
         
-    context = {
-        'form': form,
-    }
+    context = {'form': form}
     return render(request, 'tracker/profile_settings.html', context)
 
+@login_required(login_url='login')
+def verify_email_change(request):
+    profile = request.user.userprofile
+    
+    if request.method == 'POST':
+        user_code = request.POST.get('code')
+        
+        if not profile.email_verification_code or not profile.code_generated_at:
+            messages.error(request, "No active verification request found.")
+            return redirect('profile')
+
+        expiry_time = profile.code_generated_at + timedelta(minutes=15)
+        if timezone.now() > expiry_time:
+            profile.email_verification_code = None
+            profile.pending_email = None
+            profile.save()
+            messages.error(request, "Your verification code has expired. Please request a new one.")
+            return redirect('profile')
+
+        if user_code == profile.email_verification_code:
+            user = request.user
+            if User.objects.filter(email=profile.pending_email).exclude(id=user.id).exists():
+                messages.error(request, "This email is now taken. Please choose another.")
+                return redirect('profile')
+
+            user.email = profile.pending_email
+            user.save()
+            
+            profile.last_email_change = timezone.now()
+            profile.email_verification_code = None
+            profile.pending_email = None
+            profile.code_generated_at = None
+            profile.save()
+            
+            messages.success(request, "Email updated successfully!")
+            return redirect('profile')
+        else:
+            messages.error(request, "Invalid code. Please try again.")
+            
+    return render(request, 'tracker/verify_email_change.html')
+
+@login_required
+def resend_verification_code(request):
+    profile = request.user.userprofile
+    
+    if not profile.pending_email or not profile.email_verification_code:
+        messages.error(request, "No pending email change found.")
+        return redirect('profile')
+
+    usage = get_usage(request, group='email_resend', key='ip', rate='3/h', increment=True)
+    if usage and usage['should_limit']:
+        messages.error(request, "Too many resend attempts. Please wait.")
+        return redirect('verify_email_change')
+
+    html_content = f"""
+        <p>You requested to change your email address.</p>
+        <p>Your verification code is: <strong>{profile.email_verification_code}</strong></p>
+    """
+    send_async_email(profile.pending_email, "Verify Your New Email", html_content)
+    messages.success(request, f"Code resent to {profile.pending_email}")
+    
+    return redirect('verify_email_change')
 class CustomPasswordChangeView(LoginRequiredMixin, PasswordChangeView):
     login_url = 'login'
     form_class = SequentialPasswordChangeForm
@@ -741,66 +833,212 @@ def delete_goal(request, pk):
         return render(request, '404.html', status=404)
     return render(request, 'tracker/delete_goal.html', {'goal': goal})
 
+logger = logging.getLogger(__name__)
+
+@ratelimit(key='ip', rate='10/m', block=False)
+@ratelimit(key='post:username', rate='5/m', block=False)
 def login_view(request):
+    if request.session.get('unverified_user_id'):
+        messages.info(request, "Please verify your email before logging in.")
+        return redirect('verify_registration')
+    if getattr(request, 'limited', False):
+        messages.error(request, "Too many attempts. Please try again in 1 minute.")
+        return render(request, 'tracker/login.html')
     if request.method == 'POST':
         username = request.POST.get('username')
         password = request.POST.get('password')
-        print(f"Attempting login for user: {username}")
+        
         user = authenticate(request, username=username, password=password)
-        print(f"Authentication result: {user}")
-        if user:
+        
+        if user is not None:
             login(request, user)
-            if request.headers.get('Accept') == 'application/json':
-                return JsonResponse({
-                    'status': 'success',
-                    'message': 'Login successful.',
-                    'user_id': user.id,
-                    'username': user.username,
-                    'email': user.email
-                }, status=200)    
-            messages.success(request, 'Login successful.')
             return redirect('dashboard')
         else:
-            if request.headers.get('Accept') == 'application/json':
-                return JsonResponse({
-                    'status': 'error',  
-                    'message': 'Invalid username or password.'
-                }, status=401)
-            messages.error(request, 'Invalid username or password.')
-    return render(request, 'tracker/login.html')
+            from django.contrib.auth import get_user_model
+            User = get_user_model()
+            try:
+                temp_user = User.objects.get(username=username)
+                if temp_user.check_password(password) and not temp_user.is_active:
+                    messages.warning(request, "Account not verified. Check your email.")
+                    request.session['unverified_user_id'] = temp_user.id
+                    return redirect('verify_registration')
+            except User.DoesNotExist:
+                pass
+            messages.error(request, "Invalid username or password.")
+    return render(request, 'tracker/login.html')      
 
+@ratelimit(key='ip', rate='5/m', block=False)
+@ratelimit(key='post:email', rate='3/m', block=False)
 def register_view(request):
+    if getattr(request, 'limited', False):
+        if request.headers.get('Accept') == 'application/json':
+            return JsonResponse({'status': 'error', 'message': 'Too many attempts.'}, status=429)
+        messages.error(request, "Too many registration attempts. Please wait.")
+        return redirect('register')
     if request.method == 'POST':
         form = SignUpForm(request.POST)
         if form.is_valid():
-            user = form.save()
-            if request.headers.get('Accept') == 'application/json':
-                return JsonResponse({
-                    'status': 'success',
-                    'message': 'Registration successful, you can now log in.',
-                    'user_id': user.id,
-                    'username': user.username,
-                    'email': user.email
-                }, status=201)
-            messages.success(request, 'Registration successful, you can now log in.')
-            return redirect('login')
+            try:
+                with transaction.atomic():
+                    user = form.save()
+                    
+                    profile, created = UserProfile.objects.get_or_create(user=user)                    
+                    
+                    code = str(random.randint(100000, 999999))
+                    profile.email_verification_code = code
+                    profile.save()
+                    html_content = f"<strong>Your activation code is: {code}</strong>"
+                    send_async_email(user.email, "Your Verification Code", html_content)
+                    messages.success(request, f"A new code has been sent to {user.email}")
+                    request.session['unverified_user_id'] = user.id
+                    if request.headers.get('Accept') == 'application/json':
+                        return JsonResponse({
+                            'status': 'success',
+                            'message': 'Verification code sent to email.',
+                            'next_step': 'verify_registration',
+                            'data': {
+                                'user_id': user.id,
+                                'username': user.username,
+                                'email': user.email
+                            }
+                        }, status=201)
+                    return redirect('verify_registration')
+
+            except Exception as e:
+                if request.headers.get('Accept') == 'application/json':
+                    return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+                print(f"DEBUG: {e}")
+                messages.error(request, "An error occurred during registration. Please try again.")
+                return redirect('register')
+                
         else:
             if request.headers.get('Accept') == 'application/json':
                 return JsonResponse({
                     'status': 'error',
-                    'errors': form.errors,
+                    'message': 'Validation failed.',
+                    'errors': form.errors.get_json_data()
                 }, status=400)
     else:        
         form = SignUpForm()
+        
     return render(request, 'tracker/register.html', {'form': form})
 
+@csrf_protect
+def verify_registration(request):
+    user_id = request.session.get('unverified_user_id')
+    if not user_id:
+        return redirect('register')
+
+    try:
+        user = User.objects.get(id=user_id)
+        profile = user.userprofile
+    except User.DoesNotExist:
+        return redirect('register')
+
+    remaining_seconds = 0
+    if profile.cooldown_until and profile.cooldown_until > timezone.now():
+        delta = profile.cooldown_until - timezone.now()
+        remaining_seconds = int(delta.total_seconds())
+
+    if request.method == 'POST':
+        user_code = request.POST.get('code')
+
+        if user_code and user_code == profile.email_verification_code:
+            user.is_active = True
+            user.save()
+            
+            profile.email_verification_code = None
+            profile.resend_count = 0
+            profile.cooldown_until = None
+            profile.save()
+            
+            messages.success(request, "Account verified! You can now log in.")
+            if 'unverified_user_id' in request.session:
+                del request.session['unverified_user_id']
+            return redirect('login')
+        else:
+            messages.error(request, "Invalid verification code.")
+
+    return render(request, 'tracker/verify_registration.html', {
+        'email': user.email,
+        'remaining_seconds': remaining_seconds
+    })
+
+@csrf_protect
+@require_POST
+def resend_code(request):
+    user_id = request.session.get('unverified_user_id')
+    
+    if not user_id:
+        messages.error(request, "Your session expired. Please register again.")
+        return redirect('register')
+
+    try:
+        user = User.objects.get(id=user_id)
+        profile, created = UserProfile.objects.get_or_create(user=user)
+        now = timezone.now()
+        if profile.cooldown_until and now < profile.cooldown_until:
+            wait_seconds = int((profile.cooldown_until - now).total_seconds())
+            minutes = wait_seconds // 60
+            seconds = wait_seconds % 60
+            messages.error(request, f"Please wait {minutes}m {seconds}s before requesting a new code.")
+            return redirect('verify_registration')
+    
+        profile.resend_count += 1
+        if profile.resend_count <= 3:
+            next_cooldown_mins = 1 
+        else:
+            next_cooldown_mins = 5 * (2 ** (profile.resend_count - 4))
+            next_cooldown_mins = min(next_cooldown_mins, 1440)
+        profile.cooldown_until = now + timedelta(minutes=next_cooldown_mins)
+
+        new_code = str(random.randint(100000, 999999))
+        profile.email_verification_code = new_code
+        profile.save()
+
+        html_content = f"<strong>Your activation code is: {new_code}</strong>"
+        send_async_email(user.email, "Your Verification Code", html_content)
+        messages.success(request, f"A new code has been sent to {user.email}")
+        
+    except User.DoesNotExist:
+        messages.error(request, "User not found.")
+        return redirect('register')
+    except Exception as e:
+        messages.error(request, "Failed to send email. Please try again later.")
+        print(f"SMTP Error: {e}")
+    return redirect('verify_registration')
+
+def cancel_registration(request):
+    user_id = request.session.get('unverified_user_id')
+    if user_id:
+        User.objects.filter(id=user_id, is_active=False).delete()
+        del request.session['unverified_user_id']
+        messages.warning(request, "Registration cancelled.")
+    return redirect('register')
+
+def cleanup_unverified_users():
+    threshold = timezone.now() - timedelta(hours=24)
+    User.objects.filter(is_active=False, date_joined__lt=threshold).delete()
+
 def logout_view(request):
+    
+    if request.session.get('unverified_user_id'):
+        if request.headers.get('Accept') == 'application/json':
+            return JsonResponse({
+                'status': 'redirect',
+                'url': '/cancel-registration/'
+            }, status=200)
+        
+        return redirect('cancel_registration')
+
     logout(request)
+
     if request.headers.get('Accept') == 'application/json':
         return JsonResponse({
-                'status': 'success',
-                'message': 'You have been logged out.'
-            }, status=200)
+            'status': 'success',
+            'message': 'You have been logged out.'
+        }, status=200)
+
     messages.info(request, 'You have been logged out.')
     return redirect('login')
 

@@ -16,32 +16,32 @@ User = get_user_model()
 
 class SignUpForm(forms.ModelForm):
     password = forms.CharField(
-        widget=forms.PasswordInput(attrs={"class": "form-control", "placeholder": "Enter password"}),
+        widget=forms.PasswordInput(attrs={"class": "form-control"}),
         label="Password"
     )
     confirm_password = forms.CharField(
-        widget=forms.PasswordInput(attrs={"class": "form-control", "placeholder": "Confirm password"}),
+        widget=forms.PasswordInput(attrs={"class": "form-control"}),
         label="Confirm Password"
     )
 
     first_name = forms.CharField(
         max_length=30,
         required=True,
-        widget=forms.TextInput(attrs={"class": "form-control", "placeholder": "Enter first Name"})
+        widget=forms.TextInput(attrs={"class": "form-control"})
     )
     last_name = forms.CharField(
         max_length=30,
         required=True,
-        widget=forms.TextInput(attrs={"class": "form-control", "placeholder": "Enter last Name"})
+        widget=forms.TextInput(attrs={"class": "form-control"})
     )
     email = forms.EmailField(
         required=True,
-        widget=forms.EmailInput(attrs={"class": "form-control", "placeholder": "Enter email address"})
+        widget=forms.EmailInput(attrs={"class": "form-control"})
     )
     username = forms.CharField(
         max_length=150,
         required=True,
-        widget=forms.TextInput(attrs={"class": "form-control", "placeholder": "Enter username"})
+        widget=forms.TextInput(attrs={"class": "form-control"})
     )
 
     class Meta:
@@ -55,11 +55,22 @@ class SignUpForm(forms.ModelForm):
                 raise forms.ValidationError("That username is already taken.")     
         return username
     
+    def clean_first_name(self):
+        first_name = self.cleaned_data.get('first_name')
+        if any(char.isdigit() for char in first_name):
+            raise forms.ValidationError("Names should not contain numbers.")
+        return first_name
+
+    def clean_last_name(self):
+        last_name = self.cleaned_data.get('last_name')
+        if any(char.isdigit() for char in last_name):
+            raise forms.ValidationError("Names should not contain numbers.")
+        return last_name
+    
     def clean_email(self):
         email = self.cleaned_data.get('email')
-        if email and email != self.instance.email:
-            if User.objects.filter(email__iexact=email).exists():
-                raise forms.ValidationError("That email address is already in use by another account.")
+        if email and User.objects.filter(email__iexact=email).exists():
+            raise forms.ValidationError("That email address is already in use.")
         return email
     
     def clean_password(self):
@@ -75,44 +86,25 @@ class SignUpForm(forms.ModelForm):
         ]
 
         for validator in validators:
-            try:
-                validator.validate(password)
-            except ValidationError as e:
-                raise ValidationError(e.messages[0])
+            validator.validate(password, user=self.instance)
         
         return password
-
-    def clean_confirm_password(self):
-        password = self.cleaned_data.get("password")
-        confirm = self.cleaned_data.get("confirm_password")
-
-        if password != confirm:
-            raise ValidationError("Passwords do not match.")
-
-        return confirm
     
     def clean(self):
-        cleaned_data = super().clean() 
+        cleaned_data = super().clean()
+        password = cleaned_data.get("password")
+        confirm = cleaned_data.get("confirm_password")
 
-        if 'username' in self.errors:
-            username_errors = self.errors['username']
-            self._errors = {} 
-            self._errors['username'] = username_errors
-            return cleaned_data
-        
-        if 'email' in self.errors:
-            email_errors = self.errors['email']
-            self._errors = {} 
-            self._errors['email'] = email_errors
+        if password and confirm and password != confirm:
+            self.add_error('confirm_password', "Passwords do not match.")
 
-            return cleaned_data
-        
         return cleaned_data
     
     def save(self, commit=True):
         user = super().save(commit=False)
-        password = self.cleaned_data["password"]
-        user.set_password(password)
+        user.set_password(self.cleaned_data["password"])
+        user.email = self.cleaned_data["email"]
+        user.is_active = False
         if commit:
             user.save()
         return user
@@ -183,9 +175,6 @@ class BudgetGoalForm(forms.ModelForm):
         return cleaned_data
     
 class ProfileUpdateForm(forms.ModelForm):
-    email = forms.EmailField(
-        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Email Address'})
-    )
     first_name = forms.CharField(
         widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'First Name'})
     )
