@@ -2,110 +2,95 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>Budget Tracker</title>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Budget Tracker{% endblock %}</title>
+    
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-  <link rel="stylesheet" href="{% static 'tracker/styles.css' %}">
+    
+    <style>
+        body { background-color: #f8f9fa; min-height: 100vh; display: flex; flex-direction: column; }
+        .navbar { box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+        .main-content { flex: 1; padding-bottom: 2rem; }
+        .card { border: none; box-shadow: 0 2px 8px rgba(0,0,0,0.05); transition: transform 0.2s; }
+        .card:hover { transform: translateY(-2px); }
+    </style>
 </head>
 <body>
-<nav class="navbar navbar-expand-lg navbar-light bg-light">
-  <div class="container-fluid">
-    <a class="navbar-brand" href="{% url 'dashboard' %}">BudgetTracker</a>
-    
-    <div class="collapse navbar-collapse" id="navbarNav">
-    
-    {% if user.is_authenticated %}
-        <ul class="navbar-nav me-auto">
-            <li class="nav-item">
-                <a class="nav-link" href="{% url 'goals_list' %}">Goals</a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link" href="{% url 'transactions' %}">Transactions</a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link" href="{% url 'charts' %}">Charts</a>
-            </li>
-        </ul>
 
-        <ul class="navbar-nav ms-auto align-items-center">       
-            <li class="nav-item dropdown">
-                <a class="nav-link dropdown-toggle" href="#" id="profileDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                    <i class="fas fa-user-circle me-1"></i> {{ user.username }}
-                </a>
-                <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="profileDropdown">
-                    <li class="px-3 pt-2 pb-1">
-                        <form action="{% url 'change_currency' %}" method="post" class="d-flex align-items-center">
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary sticky-top">
+        <div class="container">
+            <a class="navbar-brand fw-bold" href="{% url 'dashboard' %}">
+                <i class="fas fa-wallet me-2"></i>BudgetApp
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            
+            <div class="collapse navbar-collapse" id="navbarNav">
+                {% if user.is_authenticated %}
+                <ul class="navbar-nav me-auto">
+                    <li class="nav-item"><a class="nav-link" href="{% url 'dashboard' %}">Dashboard</a></li>
+                    <li class="nav-item"><a class="nav-link" href="{% url 'transactions' %}">Transactions</a></li>
+                    <li class="nav-item"><a class="nav-link" href="{% url 'goals_list' %}">Goals</a></li>
+                    <li class="nav-item"><a class="nav-link" href="{% url 'charts' %}">Charts</a></li>
+                </ul>
+
+                <ul class="navbar-nav ms-auto align-items-center">
+                    <li class="nav-item me-3">
+                        <form action="{% url 'change_currency' %}" method="post" class="d-inline">
                             {% csrf_token %}
-                            <label for="currency-select" class="me-2 text-muted" style="font-size: 0.9em;">Currency:</label>
-                            <select name="currency_code" id="currency-select" class="form-select form-select-sm" onchange="this.form.submit()">
-                                
+                            <select name="currency_code" class="form-select form-select-sm bg-light border-0" onchange="this.form.submit()" style="width: auto; cursor: pointer;">
                                 {% for code, symbol in AVAILABLE_CURRENCIES.items %}
-                                    <option value="{{ code }}" 
-                                        {% if symbol == CUSTOM_CURRENCY_SYMBOL %}selected{% endif %}>
+                                    <option value="{{ code }}" {% if symbol == CUSTOM_CURRENCY_SYMBOL %}selected{% endif %}>
                                         {{ code }} ({{ symbol }})
                                     </option>
                                 {% endfor %}
-                                
                             </select>
                         </form>
                     </li>
-                            <li><hr class="dropdown-divider my-1"></li>
-                    
-                    <li><a class="dropdown-item" href="{% url 'profile' %}">
-                        <i class="fas fa-cog me-2"></i> Account Settings
-                    </a></li>
-                    
-                    <li><hr class="dropdown-divider"></li>
-                    
-                    <li><a class="dropdown-item" href="{% url 'logout' %}">
-                        <i class="fas fa-sign-out-alt me-2"></i> Logout
-                    </a></li>
-                </ul>
-            </li>
-        </ul>
 
-    {% else %}
-        <ul class="navbar-nav ms-auto">
-            {% if request.path == '/login/' %}
-                <li class="nav-item">
-                    <a class="nav-link" href="{% url 'register' %}">Register</a> 
-                </li>
-            {% elif request.path == '/register/' %}
-                <li class="nav-item">
-                    <a class="nav-link" href="{% url 'login' %}">Login</a>
-                </li>
-            {% else %}
-                <li class="nav-item">
-                    <a class="nav-link" href="{% url 'login' %}">Login</a>
-                </li>
-                <li class="nav-item">
-                    <a class="nav-link" href="{% url 'register' %}">Register</a>
-                </li>
-            {% endif %}
-        </ul>
-    {% endif %}
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle active" href="#" role="button" data-bs-toggle="dropdown">
+                            <i class="fas fa-user-circle me-1"></i> {{ user.username }}
+                        </a>
+                        <ul class="dropdown-menu dropdown-menu-end shadow">
+                            <li><a class="dropdown-item" href="{% url 'profile' %}"><i class="fas fa-cog me-2 text-muted"></i> Settings</a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item text-danger" href="{% url 'logout' %}"><i class="fas fa-sign-out-alt me-2"></i> Logout</a></li>
+                        </ul>
+                    </li>
+                </ul>
+                {% else %}
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item"><a class="nav-link" href="{% url 'login' %}">Login</a></li>
+                    <li class="nav-item"><a class="btn btn-light text-primary ms-2 btn-sm rounded-pill px-3" href="{% url 'register' %}">Sign Up</a></li>
+                </ul>
+                {% endif %}
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mt-4 main-content">
+        {% if messages %}
+            {% for message in messages %}
+                <div class="alert alert-{% if message.tags == 'error' %}danger{% else %}{{ message.tags }}{% endif %} alert-dismissible fade show shadow-sm" role="alert">
+                    {% if message.tags == 'success' %}<i class="fas fa-check-circle me-2"></i>{% endif %}
+                    {% if message.tags == 'error' %}<i class="fas fa-exclamation-circle me-2"></i>{% endif %}
+                    {{ message }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                </div>
+            {% endfor %}
+        {% endif %}
+
+        {% block content %}{% endblock %}
     </div>
-  </div>
-</nav>
-  <hr>
-{% block messages %}
-<div class="container mt-3">
-  {% if messages %}
-    {% for message in messages %}
-      <div class="alert alert-{% if message.tags == 'error' %}danger{% else %}{{ message.tags }}{% endif %} alert-dismissible fade show" role="alert">
-        {{ message }}
-        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-      </div>
-    {% endfor %}
-  {% endif %}
-</div>
-{% endblock %}
-  
-  <div class="container">
-  {% block content %}
-  {% endblock %}
-  </div>
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+    <footer class="bg-white text-center py-3 border-top mt-auto">
+        <small class="text-muted">&copy; {% now "Y" %} BudgetApp. All rights reserved.</small>
+    </footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>

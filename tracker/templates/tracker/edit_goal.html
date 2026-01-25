@@ -1,24 +1,66 @@
 {% extends 'tracker/base.html' %}
+{% load tracker_filters %}
+
+{% block title %}Edit Goal{% endblock %}
 
 {% block content %}
-<div class="container mt-5">
-    <h2>Edit Goal: {{ goal.get_category_display }}</h2>
-    
-    <form method="post">
-        {% csrf_token %}
-        
-        <div class="mb-3">
-            {{ form.category.label_tag }}
-            {{ form.category }}
-        </div>
+<div class="row justify-content-center mt-4">
+    <div class="col-md-6">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-white py-3">
+                <h5 class="mb-0 fw-bold text-primary">
+                    <i class="fas fa-edit me-2"></i>Edit Budget Goal
+                </h5>
+            </div>
+            
+            <div class="card-body p-4">
+                <form method="post">
+                    {% csrf_token %}
+                    
+                    <div class="d-flex align-items-center mb-4 p-3 bg-light rounded">
+                        <div class="me-3">
+                            <div class="icon-shape bg-primary text-white rounded-circle d-flex align-items-center justify-content-center" style="width: 40px; height: 40px;">
+                                <i class="fas fa-bullseye"></i>
+                            </div>
+                        </div>
+                        <div>
+                            <h6 class="mb-0 fw-bold text-dark">{{ goal.category }}</h6>
+                            <small class="text-muted">For {{ goal.month }}/{{ goal.year }}</small>
+                        </div>
+                    </div>
 
-        <div class="mb-3">
-            {{ form.target_amount.label_tag }}
-            {{ form.target_amount }}
+                    <input type="hidden" name="category" value="{{ goal.category }}">
+
+                    <div class="mb-4">
+                        <label for="id_target_amount" class="form-label small fw-bold text-muted text-uppercase">Target Amount</label>
+                        <div class="input-group">
+                            <span class="input-group-text bg-white border-end-0 text-muted">
+                                {{ CUSTOM_CURRENCY_SYMBOL|default:"$" }}
+                            </span>
+                            <input type="number" 
+                                   name="target_amount" 
+                                   id="id_target_amount" 
+                                   step="0.01" 
+                                   class="form-control border-start-0 ps-0" 
+                                   value="{{ goal.target_amount|stringformat:'.2f' }}" 
+                                   required>
+                        </div>
+                        {% if form.target_amount.errors %}
+                            <div class="text-danger small mt-1">{{ form.target_amount.errors.0 }}</div>
+                        {% endif %}
+                    </div>
+                    
+                    <div class="d-grid gap-2">
+                        <button type="submit" class="btn btn-primary btn-lg shadow-sm">
+                            <i class="fas fa-save me-2"></i> Save Changes
+                        </button>
+                        <a href="{% url 'goals_list' %}?year={{ goal.year }}&month={{ goal.month }}" class="btn btn-light text-muted">
+                            Cancel
+                        </a>
+                    </div>
+                </form>
+            </div>
         </div>
-        
-        <button type="submit" class="btn btn-warning">Save Changes</button>
-        <a href="{% url 'goals_list' %}" class="btn btn-secondary">Cancel</a>
-    </form>
+    </div>
 </div>
 {% endblock %}

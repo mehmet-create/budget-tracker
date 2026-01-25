@@ -1,47 +1,55 @@
 {% extends 'tracker/base.html' %}
 
-
-{% block messages %}
-{% endblock %}
+{% block title %}Login{% endblock %}
 
 {% block content %}
-<div class="login-card">
-    <div class="container d-flex justify-content-center align-items-center" style="height:80vh;">
-        <div class="card shadow p-4" style="width: 400px;">
-            <h3 class="text-center mb-4">Login</h3>
-
-    {% if messages %}
-        {% for message in messages %}
-        <div class="alert alert-danger alert-dismissible fade show">
-            {{ message }}
-            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-        </div>
-        {% endfor %}
-    {% endif %}        
-
-        <form method="POST" id="loginForm">
-            {% csrf_token %}
-            <div class="mb-3">
-                <label class="form-label">Username</label>
-                <input type="text" name="username" class="form-control" placeholder="Enter username" required autofocus>
-            </div>
-            <div class="mb-3">
-                <div class="d-flex justify-content-between">
-                    <label class="form-label">Password</label>
-                    <a href="{% url 'password_reset' %}" class="small text-decoration-none text-muted">Forgot?</a>
-                </div>
-                <input type="password" name="password" class="form-control" placeholder="Enter password" required>
-            </div>
+<div class="row justify-content-center mt-5">
+    <div class="col-md-5 col-lg-4">
+        <div class="card border-0 shadow-sm p-4">
             
-            <button type="submit" class="btn btn-primary w-100" id="submitBtn">
-                <span id="btnText">Login</span>
-                <span id="btnSpinner" class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
-            </button>
-        </form>
-        
-        <p class="text-center mt-3 small">
-            Don't have an account? <a href="{% url 'register' %}" class="text-decoration-none">Create Account</a>
-        </p>
+            <div class="text-center mb-4">
+                <div class="icon-shape bg-primary bg-opacity-10 text-primary p-3 rounded-circle d-inline-block mb-3">
+                    <i class="fas fa-sign-in-alt fa-2x"></i>
+                </div>
+                <h3 class="fw-bold">Welcome Back</h3>
+                <p class="text-muted small">Sign in to continue to your dashboard</p>
+            </div>
+
+            <form method="POST" id="loginForm">
+                {% csrf_token %}
+                
+                <div class="mb-3">
+                    <label class="form-label small fw-bold text-muted text-uppercase">Username</label>
+                    <div class="input-group">
+                        <span class="input-group-text bg-light border-end-0 text-muted"><i class="fas fa-user"></i></span>
+                        <input type="text" name="username" class="form-control border-start-0 ps-0" placeholder="Enter your username" required autofocus>
+                    </div>
+                </div>
+
+                <div class="mb-4">
+                    <div class="d-flex justify-content-between">
+                        <label class="form-label small fw-bold text-muted text-uppercase">Password</label>
+                        <a href="{% url 'password_reset' %}" class="small text-decoration-none text-primary">Forgot password?</a>
+                    </div>
+                    <div class="input-group">
+                        <span class="input-group-text bg-light border-end-0 text-muted"><i class="fas fa-lock"></i></span>
+                        <input type="password" name="password" class="form-control border-start-0 ps-0" placeholder="Enter your password" required>
+                    </div>
+                </div>
+                
+                <div class="d-grid">
+                    <button type="submit" class="btn btn-primary btn-lg shadow-sm" id="submitBtn">
+                        <span id="btnText">Login</span>
+                        <span id="btnSpinner" class="spinner-border spinner-border-sm d-none ms-2" role="status" aria-hidden="true"></span>
+                    </button>
+                </div>
+            </form>
+            
+            <div class="text-center mt-4 pt-3 border-top">
+                <p class="small text-muted mb-0">
+                    Don't have an account? <a href="{% url 'register' %}" class="text-decoration-none fw-bold">Create Account</a>
+                </p>
+            </div>
         </div>
     </div>
 </div>
@@ -53,6 +61,9 @@
     const btnSpinner = document.getElementById('btnSpinner');
 
     loginForm.addEventListener('submit', function() {
+        // Prevent double submission
+        if(submitBtn.disabled) return;
+        
         submitBtn.disabled = true;
         btnText.textContent = "Authenticating...";
         btnSpinner.classList.remove('d-none');

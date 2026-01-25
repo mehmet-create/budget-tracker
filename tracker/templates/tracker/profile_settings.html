@@ -1,69 +1,101 @@
-{% extends "tracker/base.html" %}
+{% extends 'tracker/base.html' %}
 
-{% block messages %}
-{% endblock %}
+{% block title %}Account Settings{% endblock %}
 
 {% block content %}
-<div class="profile-card">
-    <div class="container mt-5" style="max-width: 500px;">
-        {% if messages %}
-            {% for message in messages %}
-            <div class="alert alert-danger alert-dismissible fade show">
-                {{ message }}
-                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-            </div>
-            {% endfor %}
-        {% endif %}
-
-    <h3 class="text-center mb-4">Account Settings</h3>
-            
-    <div class="card p-4 shadow-sm">
-        <h5 class="mb-3 text-primary">Update Profile Information</h5>
+<div class="row justify-content-center">
+    <div class="col-lg-8">
         
-        <form method="POST" class="mb-4">
-            {% csrf_token %}
-            
-            <div class="mb-3">
-                <label class="form-label">Username</label>
-                {{ form.username }}
-            </div>
+        <div class="mb-4">
+            <h2 class="fw-bold">Account Settings</h2>
+            <p class="text-muted">Manage your profile information and security.</p>
+        </div>
 
-            <div class="row mb-3">
-                <div class="col">
-                    <label class="form-label">First Name</label>
-                    {{ form.first_name }}
+        <div class="card border-0 shadow-sm mb-4">
+            <div class="card-header bg-white py-3 border-bottom-0">
+                <h5 class="mb-0 fw-bold text-primary"><i class="fas fa-user-edit me-2"></i>Public Profile</h5>
+            </div>
+            <div class="card-body p-4">
+                <form method="POST">
+                    {% csrf_token %}
+                    
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold text-muted text-uppercase">Username</label>
+                        {{ form.username }}
+                        {% if form.username.errors %}
+                            <div class="text-danger small mt-1">{{ form.username.errors.0 }}</div>
+                        {% endif %}
+                    </div>
+
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label small fw-bold text-muted text-uppercase">First Name</label>
+                            {{ form.first_name }}
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label small fw-bold text-muted text-uppercase">Last Name</label>
+                            {{ form.last_name }}
+                        </div>
+                    </div>
+
+                    <div class="mb-4">
+                        <label class="form-label small fw-bold text-muted text-uppercase">Current Email</label>
+                        <input type="text" class="form-control bg-light" value="{{ user.email }}" disabled>
+                        <small class="text-muted">To change your email, use the Security section below.</small>
+                    </div>
+
+                    <div class="d-flex justify-content-end">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-save me-2"></i> Save Profile
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <div class="card border-0 shadow-sm mb-4">
+            <div class="card-header bg-white py-3 border-bottom-0">
+                <h5 class="mb-0 fw-bold text-warning"><i class="fas fa-shield-alt me-2"></i>Security & Login</h5>
+            </div>
+            <div class="card-body p-4">
+                
+                <div class="mb-4 pb-4 border-bottom">
+                    <label class="form-label fw-bold">Change Email Address</label>
+                    <p class="small text-muted mb-2">We will send a verification code to the new address.</p>
+                    
+                    <form method="POST" class="d-flex gap-2">
+                        {% csrf_token %}
+                        <input type="email" name="email" class="form-control" placeholder="Enter new email address" required>
+                        <button type="submit" name="request_email_change" class="btn btn-outline-warning text-nowrap">
+                            Verify & Update
+                        </button>
+                    </form>
                 </div>
-                <div class="col">
-                    <label class="form-label">Last Name</label>
-                    {{ form.last_name }}
+
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="fw-bold mb-1">Password</h6>
+                        <p class="small text-muted mb-0">Update your password regularly to keep your account secure.</p>
+                    </div>
+                    <a href="{% url 'password_change' %}" class="btn btn-outline-secondary">
+                        Change Password
+                    </a>
                 </div>
             </div>
+        </div>
 
-            <button type="submit" class="btn btn-primary w-100">Save General Info</button>
-        </form>
-
-        <hr class="my-4">
-
-        <h5 class="mb-3 text-warning">Security Settings</h5>
-        <form method="POST">
-            {% csrf_token %}
-            <div class="mb-3">
-                <label class="form-label">Email Address</label>
-                <input type="email" name="email" value="{{ request.user.email }}" class="form-control" required>
-                <div class="form-text small text-muted">Changing this will require code verification.</div>
+        <div class="card border-danger border-1 shadow-sm bg-white">
+            <div class="card-body p-4 d-flex justify-content-between align-items-center">
+                <div>
+                    <h6 class="fw-bold text-danger mb-1">Delete Account</h6>
+                    <p class="small text-muted mb-0">Permanently delete your account and all data.</p>
+                </div>
+                <a href="{% url 'delete_account' %}" class="btn btn-danger btn-sm">
+                    Delete Account
+                </a>
             </div>
-            
-            <button type="submit" name="request_email_change" class="btn btn-outline-warning w-100">
-                Update Email
-            </button>
-        </form>
-    </div>
+        </div>
 
-    <p class="text-center mt-4">
-        <a href="{% url 'password_change' %}" class="btn btn-link text-muted text-decoration-none">
-            <i class="bi bi-key"></i> Change Password
-        </a>
-    </p>
     </div>
 </div>
 {% endblock %}

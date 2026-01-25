@@ -1,121 +1,137 @@
 {% extends 'tracker/base.html' %}
 {% load tracker_filters %}
 
+{% block title %}Dashboard{% endblock %}
+
 {% block content %}
-{% if user.is_authenticated %}
 
-<div class="container mt-4">
-    <div class="d-flex justify-content-between align-items-baseline mb-3 flex-wrap">
-        <h2 class="fw-bold mb-1">Dashboard</h2>
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h2 class="fw-bold mb-0">Overview</h2>
+        <p class="text-muted mb-0">{{ current_month_name }} {{ current_year }}</p>
     </div>
-
-    <hr>
-    <div class="row g-3 mb-4">
-        <div class="col-md-4">
-            <div class="card shadow-sm border-start border-4 border-success">
-                <div class="card-body">
-                    <h6 class="text-muted mb-1">Total Income</h6>
-                    <p class="fs-5 fw-bold text-success">{% currency total_income %}</p>
-                </div>
-            </div>
-        </div>
-
-        <div class="col-md-4">
-            <div class="card shadow-sm border-start border-4 border-danger">
-                <div class="card-body">
-                    <h6 class="text-muted mb-1">Total Expense</h6>
-                    <p class="fs-5 fw-bold text-danger">{% currency total_expense %}</p>
-                </div>
-            </div>
-        </div>
-
-        <div class="col-md-4">
-            <div class="card shadow-sm border-start border-4 border-primary">
-                <div class="card-body">
-                    <h6 class="text-muted mb-1">Balance</h6>
-                    <p class="fs-5 fw-bold {% if balance >= 0 %}text-success{% else %}text-danger{% endif %}">
-                        {% currency balance %}
-                    </p>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Monthly Budget Goals -->
-<div class="card shadow-sm mb-4">
-    <div class="card-header bg-info text-dark d-flex justify-content-between align-items-center fw-semibold">
-        <span>
-            Monthly Budget Goals ({{ current_month }}/{{ current_year }}) ({{ CUSTOM_CURRENCY_SYMBOL }})
-        </span>
-        <a href="{% url 'goals_list' %}" class="btn btn-sm btn-dark shadow-sm">
-            <i class="bi bi-gear-fill me-1"></i> Manage
+    <div>
+        <a href="{% url 'add_transaction' %}" class="btn btn-primary shadow-sm">
+            <i class="fas fa-plus me-1"></i> Add Transaction
         </a>
     </div>
+</div>
 
-    <div class="card-body">
-        {% if goal_progress %}
-            {% for goal in goal_progress %}
-                <div class="mb-3 p-2 rounded shadow-sm goal-item-row border">
-                    <div class="d-flex justify-content-between align-items-center mb-1">
-                        <strong>{{ goal.category }}</strong>
-                        <span class="badge 
-                            {% if goal.status == 'exceeded' %}bg-danger
-                            {% elif goal.status == 'warning' %}bg-warning text-dark
-                            {% else %}bg-success
-                            {% endif %}">
-                            {{ goal.percent }}%
-                        </span>
-                    </div>
-                    
-                    <small class="text-muted">{% currency goal.spent %} spent / {% currency goal.target %} target</small>
-                    
-                    <div class="progress mt-1" style="height: 10px;">
-                        <div class="progress-bar 
-                            {% if goal.status == 'exceeded' %}bg-danger
-                            {% elif goal.status == 'warning' %}bg-warning
-                            {% else %}bg-success
-                            {% endif %}" 
-                            role="progressbar" 
-                            style="width: {% if goal.percent > 100 %}100{% else %}{{ goal.percent }}{% endif %}%;"
-                            aria-valuenow="{{ goal.percent }}" 
-                            aria-valuemin="0" 
-                            aria-valuemax="100">
-                        </div>
+<div class="row g-4 mb-4">
+    <div class="col-md-4">
+        <div class="card h-100 border-start border-4 border-success">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <h6 class="text-muted text-uppercase fw-bold mb-0">Total Income</h6>
+                    <div class="icon-shape bg-success bg-opacity-10 text-success p-2 rounded-circle">
+                        <i class="fas fa-arrow-down"></i>
                     </div>
                 </div>
-            {% endfor %}
-        {% else %}
-            <div class="alert alert-info mb-0 text-center">
-                No budget goals set for this month. 
-                <a href="{% url 'goals_list' %}" class="alert-link">Setup your budget.</a>
+                <h3 class="mb-0 fw-bold text-success">{% currency total_income %}</h3>
             </div>
-        {% endif %}
+        </div>
+    </div>
+
+    <div class="col-md-4">
+        <div class="card h-100 border-start border-4 border-danger">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <h6 class="text-muted text-uppercase fw-bold mb-0">Total Expense</h6>
+                    <div class="icon-shape bg-danger bg-opacity-10 text-danger p-2 rounded-circle">
+                        <i class="fas fa-arrow-up"></i>
+                    </div>
+                </div>
+                <h3 class="mb-0 fw-bold text-danger">{% currency total_expense %}</h3>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-4">
+        <div class="card h-100 border-start border-4 border-primary">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <h6 class="text-muted text-uppercase fw-bold mb-0">Net Balance</h6>
+                    <div class="icon-shape bg-primary bg-opacity-10 text-primary p-2 rounded-circle">
+                        <i class="fas fa-wallet"></i>
+                    </div>
+                </div>
+                <h3 class="mb-0 fw-bold {% if balance >= 0 %}text-primary{% else %}text-danger{% endif %}">
+                    {% currency balance %}
+                </h3>
+            </div>
+        </div>
     </div>
 </div>
 
-{% else %}
-<div class="container mt-5" style="max-width: 400px;">
-    <h3 class="mb-3">Login</h3>
-    <form action="{% url 'dashboard' %}" method="POST">
-        {% csrf_token %}
-        <div class="mb-3">
-            <input type="text" class="form-control" name="username" placeholder="Username" required>
+<div class="row">
+    <div class="col-lg-8 mb-4">
+        <div class="card shadow-sm h-100">
+            <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+                <h5 class="mb-0 fw-bold text-primary"><i class="fas fa-bullseye me-2"></i>Budget Goals</h5>
+                <a href="{% url 'goals_list' %}" class="btn btn-sm btn-outline-primary">Manage</a>
+            </div>
+            <div class="card-body">
+                {% if goal_progress %}
+                    {% for goal in goal_progress %}
+                    <div class="mb-4">
+                        <div class="d-flex justify-content-between align-items-end mb-1">
+                            <div>
+                                <span class="fw-bold text-dark">{{ goal.category }}</span>
+                                <span class="text-muted small ms-2">({% currency goal.spent %} / {% currency goal.target %})</span>
+                            </div>
+                            <span class="badge {% if goal.status == 'exceeded' %}bg-danger{% elif goal.status == 'warning' %}bg-warning text-dark{% else %}bg-success{% endif %}">
+                                {{ goal.percent }}%
+                            </span>
+                        </div>
+                        <div class="progress" style="height: 8px;">
+                            <div class="progress-bar {% if goal.status == 'exceeded' %}bg-danger{% elif goal.status == 'warning' %}bg-warning{% else %}bg-success{% endif %}" 
+                                 role="progressbar" 
+                                 style="width: {% if goal.percent > 100 %}100{% else %}{{ goal.percent }}{% endif %}%">
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <div class="text-center py-5 text-muted">
+                        <i class="fas fa-clipboard-list fa-3x mb-3 opacity-25"></i>
+                        <p>No budget goals set for this month.</p>
+                        <a href="{% url 'goals_list' %}" class="btn btn-primary btn-sm mt-2">Set Goals</a>
+                    </div>
+                {% endif %}
+            </div>
         </div>
-        <div class="mb-3">
-            <input type="password" class="form-control" name="password" placeholder="Password" required>
-        </div>
-        <button type="submit" class="btn btn-primary w-100">Login</button>
-    </form>
-    
-    {% if message %}
-    <div class="alert alert-warning alert-dismissible fade show mt-3" role="alert">
-        {{ message }}
-        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
     </div>
-    {% endif %}
-</div>
-{% endif %}
 
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script> 
+    <div class="col-lg-4 mb-4">
+        <div class="card shadow-sm h-100">
+            <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+                <h5 class="mb-0 fw-bold text-dark"><i class="fas fa-history me-2"></i>Recent</h5>
+                <a href="{% url 'transactions' %}" class="btn btn-sm btn-link text-decoration-none">View All</a>
+            </div>
+            <div class="list-group list-group-flush">
+                {% for t in transactions %}
+                <div class="list-group-item d-flex justify-content-between align-items-center py-3">
+                    <div class="d-flex align-items-center">
+                        <div class="icon-circle me-3 {% if t.type == 'Income' %}bg-success text-white{% else %}bg-light text-muted{% endif %} rounded-circle d-flex align-items-center justify-content-center" style="width: 40px; height: 40px;">
+                            <i class="fas {% if t.type == 'Income' %}fa-arrow-down{% else %}fa-shopping-bag{% endif %}"></i>
+                        </div>
+                        <div>
+                            <div class="fw-bold text-truncate" style="max-width: 120px;">{{ t.category }}</div>
+                            <small class="text-muted">{{ t.date|date:"M d" }}</small>
+                        </div>
+                    </div>
+                    <span class="fw-bold {% if t.type == 'Income' %}text-success{% else %}text-danger{% endif %}">
+                        {% if t.type == 'Income' %}+{% else %}-{% endif %} {% currency t.amount %}
+                    </span>
+                </div>
+                {% empty %}
+                <div class="text-center py-5 text-muted">
+                    <p>No transactions yet.</p>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</div>
 
 {% endblock %}

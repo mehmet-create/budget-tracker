@@ -14,7 +14,6 @@ from pathlib import Path
 import os
 from dotenv import load_dotenv
 import dj_database_url
-import resend
 
 load_dotenv()
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -43,7 +42,7 @@ CSRF_TRUSTED_ORIGINS = [f"https://{render_host}"] if render_host else []
 
 # SECURITY WARNING: don't run with debug turned on in production!
 
-DEBUG = True
+DEBUG = False
 
 
 # Application definition
@@ -70,11 +69,15 @@ MIDDLEWARE = [
 ]
 
 CACHES = {
-    'default': {
-        'BACKEND': 'django.core.cache.backends.db.DatabaseCache',
-        'LOCATION': 'my_rate_limit_cache',
+    "default": {
+        "BACKEND": "django_redis.cache.RedisCache",
+        "LOCATION": f"redis://{os.getenv('REDIS_HOST', '127.0.0.1')}:6379/1",
+        "OPTIONS": {
+            "CLIENT_CLASS": "django_redis.client.DefaultClient",
+        }
     }
 }
+
 ROOT_URLCONF = 'budget.urls'
 
 TEMPLATES = [
@@ -99,70 +102,56 @@ WSGI_APPLICATION = 'budget.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
-if os.getenv('DATABASE_URL'):
-    DATABASES = {
-        'default': dj_database_url.config(
-            default=os.getenv('DATABASE_URL'),
-            conn_max_age=600,
-            conn_health_checks=True,
-            ssl_require=True
-        )
-    }
-else:
-    DATABASES = {
-        'default': {
-            'ENGINE': 'django.db.backends.mysql',
-            'NAME': os.getenv('DB_NAME'),
-            'USER': os.getenv('DB_USER'),
-            'PASSWORD': os.getenv('DB_PASSWORD'),
-            'HOST': os.getenv('DB_HOST', 'localhost'),
-            'PORT': os.getenv('DB_PORT', '3306'),
-        }
-    }
 
-EMAIL_BACKEND = 'django_resend.backends.ResendBackend'
-resend.api_key = os.getenv('RESEND_API_KEY')
-#EMAIL_HOST = 'smtp.gmail.com'
-#EMAIL_PORT = 587
-#EMAIL_USE_TLS = True
-#EMAIL_HOST_USER = os.getenv('DB_USER_EMAIL')
-#EMAIL_HOST_PASSWORD = os.getenv('DB_EMAIL_PASSWORD')
-DEFAULT_FROM_EMAIL = 'onboarding@resend.dev'
-
-# Password validation
-# https://docs.djangoproject.com/en/5.2/ref/settings/#auth-password-validators
-
-AUTH_PASSWORD_VALIDATORS = []
+DATABASES = {
+    'default': dj_database_url.config(
+        default=os.getenv('DATABASE_URL'),
+        conn_max_age=600,
+        conn_health_checks=True,
+        ssl_require=(not DEBUG)
+    )
+}
 
 
-# Internationalization
-# https://docs.djangoproject.com/en/5.2/topics/i18n/
+EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+EMAIL_HOST = 'smtp.resend.com'
+EMAIL_PORT = 587
+EMAIL_USE_TLS = True
+EMAIL_HOST_USER = 'resend'
+EMAIL_HOST_PASSWORD = os.getenv('RESEND_API_KEY') 
+DEFAULT_FROM_EMAIL = 'onboarding@resend.dev' # Change this once you verify your domain
+
+# --- STANDARD DJANGO SETTINGS ---
+AUTH_PASSWORD_VALIDATORS = [
+    {
+        'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',
+    },
+    {
+        'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator',
+        'OPTIONS': {'min_length': 8},
+    },
+    {
+        'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator',
+    },
+    {
+        'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator',
+    },
+]
 
 LANGUAGE_CODE = 'en-us'
-
-TIME_ZONE = 'UTC'
-
+TIME_ZONE = 'Africa/Lagos'
 USE_I18N = True
-
 USE_TZ = True
 
-
-# Static files (CSS, JavaScript, Images)
-# https://docs.djangoproject.com/en/5.2/howto/static-files/
-
+# --- STATIC FILES ---
 STATIC_URL = '/static/'
-
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
-
 STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
-
-# Default primary key field type
-# https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
+# --- CURRENCY SETTINGS ---
 CUSTOM_CURRENCY_SYMBOL = '₦'
-
 AVAILABLE_CURRENCIES = {
     'NGN': '₦',
     'USD': '$',
@@ -170,8 +159,28 @@ AVAILABLE_CURRENCIES = {
     'GBP': '£',
 }
 
+# --- LOGIN/LOGOUT REDIRECTS ---
 LOGIN_REDIRECT_URL = 'dashboard' 
 LOGOUT_REDIRECT_URL = 'login'
 LOGIN_URL = 'login'
+
+# --- ERROR HANDLERS ---
 CSRF_FAILURE_VIEW = 'tracker.views.csrf_failure_json'
-MIDDLEWARE.insert(1, 'whitenoise.middleware.WhiteNoiseMiddleware')
+
+# --- MIDDLEWARE ---
+# Ensure WhiteNoise is added. 
+# Note: It's safer to add this to the main MIDDLEWARE list above if possible, 
+# but this works if the list exists.
+if 'whitenoise.middleware.WhiteNoiseMiddleware' not in MIDDLEWARE:
+    MIDDLEWARE.insert(1, 'whitenoise.middleware.WhiteNoiseMiddleware')
+
+# budget/settings.py
+
+# False = Use the real Docker Redis we just started
+CELERY_TASK_ALWAYS_EAGER = False 
+
+# Connect to localhost:6379
+CELERY_BROKER_URL = os.getenv('REDIS_URL', 'redis://127.0.0.1:6379/0')
+CELERY_RESULT_BACKEND = os.getenv('REDIS_URL', 'redis://127.0.0.1:6379/0')
+CELERY_ACCEPT_CONTENT = ['json']
+CELERY_TASK_SERIALIZER = 'json'    

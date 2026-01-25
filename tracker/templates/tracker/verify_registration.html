@@ -1,110 +1,102 @@
-{% extends "tracker/base.html" %}
+{% extends 'tracker/base.html' %}
+
+{% block title %}Verify Account{% endblock %}
 
 {% block content %}
-<div class="container mt-5" style="max-width: 450px;">
-    <div class="card shadow-sm p-4 border-0">
-        <div class="text-center mb-4">
-            <div class="display-6 text-primary mb-2">
-                <i class="fas fa-envelope-open-text"></i>
-            </div>
-            <h3 class="fw-bold">Verify Your Account</h3>
-            <p class="text-muted">
-                We've sent a 6-digit verification code to <br>
-                <strong class="text-dark">{{ email }}</strong>
-            </p>
-        </div>
+<div class="row justify-content-center mt-5">
+    <div class="col-md-5 col-lg-4">
+        <div class="card border-0 shadow-sm p-3">
+            <div class="card-body text-center">
+                
+                <div class="mb-4">
+                    <div class="icon-shape bg-primary bg-opacity-10 text-primary p-3 rounded-circle d-inline-block">
+                        <i class="fas fa-envelope-open-text fa-2x"></i>
+                    </div>
+                </div>
 
-        <form method="POST">
-            {% csrf_token %}
-            <div class="mb-3">
-                <label class="form-label fw-semibold">Enter Verification Code</label>
-                <input type="text" name="code" class="form-control form-control-lg text-center letter-spacing-lg" 
-                       placeholder="000000" maxlength="6" required autofocus>
-            </div>
-            
-            <button type="submit" class="btn btn-primary w-100 btn-lg mb-3">
-                Activate Account
-            </button>
-        </form>
+                <h3 class="fw-bold mb-2">Verify Your Account</h3>
+                <p class="text-muted small mb-4">
+                    We sent a 6-digit code to<br>
+                    <strong class="text-dark bg-light px-2 py-1 rounded">{{ email }}</strong>
+                </p>
 
-        <div class="text-center">
-            <p class="small text-muted mb-1">Didn't receive the email?</p>
-            <a href="{% url 'cancel_registration' %}" class="small text-danger text-decoration-none">
-                Try a different email
-            </a>
-            <span class="mx-2 text-muted">|</span>
-            <div class="resend-container mt-4">
-                <form action="{% url 'resend_registration_code' %}" method="POST" id="resend-form">
+                <form method="POST">
                     {% csrf_token %}
                     
-                    <div id="resend-wrapper">
-                        <button type="submit" id="resend-btn" class="btn btn-secondary">
-                            Resend Verification Code
-                        </button>
+                    <div class="mb-4">
+                        <label class="form-label small fw-bold text-muted text-uppercase">Enter Verification Code</label>
+                        <input type="text" name="code" 
+                               class="form-control form-control-lg text-center fw-bold text-primary" 
+                               placeholder="0 0 0 0 0 0" 
+                               style="letter-spacing: 0.5rem; font-size: 1.5rem;" 
+                               pattern="\d{6}" maxlength="6" required autofocus>
+                    </div>
 
-                        <div id="timer-container" class="mt-2" style="display:none;">
-                            <p class="text-muted small">
-                                <i class="fas fa-clock"></i> 
-                                You can request another code in: 
-                                <strong id="seconds-display" class="text-primary">0</strong> seconds
-                            </p>
-                        </div>
+                    <div class="d-grid gap-2">
+                        <button type="submit" class="btn btn-primary btn-lg shadow-sm">
+                            Activate Account
+                        </button>
                     </div>
                 </form>
+
+                <div class="mt-4 pt-3 border-top">
+                    <p class="small text-muted mb-2">Didn't receive the email?</p>
+                    
+                    <a href="{% url 'resend_code' %}" id="resendBtn" class="fw-bold text-decoration-none">Resend Code</a>
+                    
+                    <span id="timer" class="small text-muted d-none">
+                        <i class="fas fa-clock me-1"></i> Resend available in <span id="seconds">30</span>s
+                    </span>
+                </div>
+
+                <div class="mt-2">
+                    <a href="{% url 'cancel_registration' %}" class="small text-danger text-decoration-none">
+                        Start over with a different email
+                    </a>
+                </div>
+
             </div>
-
-
         </div>
     </div>
 </div>
+
 <script>
-    const resendBtn = document.getElementById('resend-btn');
-    const timerContainer = document.getElementById('timer-container');
-    const secondsDisplay = document.getElementById('seconds-display');
+    const resendBtn = document.getElementById('resendBtn');
+    const timerSpan = document.getElementById('timer');
+    const secondsSpan = document.getElementById('seconds');
 
-    // Get the exact seconds remaining from Django context
-    let timeLeft = parseInt("{{ remaining_seconds|default:0 }}");
+    // Automatically start timer if we see a success message about resending
+    {% if messages %}
+        {% for message in messages %}
+            {% if 'resent' in message.message|lower or 'sent' in message.message|lower %}
+                startTimer();
+            {% endif %}
+        {% endfor %}
+    {% endif %}
 
-    function updateTimerUI(seconds) {
-        if (seconds <= 0) {
-            resendBtn.disabled = false;
-            timerContainer.style.display = 'none';
-            return;
-        }
+    function startTimer() {
+        resendBtn.classList.add('d-none');
+        timerSpan.classList.remove('d-none');
+        
+        let timeLeft = 30;
+        secondsSpan.innerText = timeLeft;
 
-        // Lock the button and show the container
-        resendBtn.disabled = true;
-        timerContainer.style.display = 'block';
-        secondsDisplay.innerText = seconds;
-
-        const interval = setInterval(() => {
-            seconds--;
-            secondsDisplay.innerText = seconds;
-
-            if (seconds <= 0) {
-                clearInterval(interval);
-                resendBtn.disabled = false;
-                timerContainer.style.display = 'none';
+        let countdown = setInterval(() => {
+            timeLeft--;
+            secondsSpan.innerText = timeLeft;
+            if (timeLeft <= 0) {
+                clearInterval(countdown);
+                resendBtn.classList.remove('d-none');
+                timerSpan.classList.add('d-none');
             }
         }, 1000);
     }
-
-    // Run on page load
-    if (timeLeft > 0) {
-        updateTimerUI(timeLeft);
-    }
-
-    // Immediate feedback when clicked
-    document.getElementById('resend-form').onsubmit = function() {
-        resendBtn.disabled = true;
-        resendBtn.innerText = "Sending...";
-    };
+    
+    // Optional: Visual feedback on click before page reload
+    resendBtn.addEventListener('click', function() {
+        this.innerText = "Sending...";
+        this.style.pointerEvents = "none";
+        this.classList.add('text-muted');
+    });
 </script>
-<style>
-    .letter-spacing-lg {
-        letter-spacing: 0.5rem;
-        font-weight: bold;
-        font-size: 1.5rem;
-    }
-</style>
 {% endblock %}

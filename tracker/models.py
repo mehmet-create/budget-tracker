@@ -64,24 +64,27 @@ class BudgetGoal(models.Model):
 
 CURRENCY_CHOICES = [(code, code) for code, symbol in getattr(settings, 'AVAILABLE_CURRENCIES', {}).items()]
 
-class UserProfile(models.Model):
-    user = models.OneToOneField(User, on_delete=models.CASCADE)
+from django.db import models
+from django.contrib.auth.models import User 
 
-    currency_code = models.CharField(
-        max_length=3,
-        choices=CURRENCY_CHOICES,
-        default=getattr(settings, 'DEFAULT_CURRENCY_CODE', 'NGN'),
-        verbose_name='Preferred Currency'
-    )
-    last_email_change = models.DateTimeField(null=True, blank=True)
-    pending_email = models.EmailField(null=True, blank=True)
+class UserProfile(models.Model):
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='userprofile')
+    currency_code = models.CharField(max_length=3, default='NGN', verbose_name='Preferred Currency')
+
     email_verification_code = models.CharField(max_length=6, null=True, blank=True)
+    pending_email = models.EmailField(null=True, blank=True)
     resend_count = models.IntegerField(default=0)
     cooldown_until = models.DateTimeField(null=True, blank=True)
     code_generated_at = models.DateTimeField(null=True, blank=True)
+    last_email_change = models.DateTimeField(null=True, blank=True)
+
+    last_latitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    last_longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    location_updated_at = models.DateTimeField(null=True, blank=True)
+
     def __str__(self):
-        return f"{self.user.username} Profile"
-    
+        return f"{self.user.username}'s Profile"
+
 class BudgetLock(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE)
     month = models.IntegerField()

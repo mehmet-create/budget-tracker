@@ -1,0 +1,46 @@
+version: '3.8'
+
+services:
+  # 1. Redis (The Cache & Message Broker)
+  redis:
+    image: redis:7-alpine
+    container_name: tracker_redis
+    ports:
+      - "6379:6379"
+
+  # 2. Django Web Server (The API/Website)
+  web:
+    build: .
+    container_name: tracker_web
+    # Uses Uvicorn because we wrote Async code!
+    command: uvicorn tracker.asgi:application --host 0.0.0.0 --port 8000 --reload
+    volumes:
+      - .:/app
+    ports:
+      - "8000:8000"
+    env_file: .env
+    depends_on:
+      - redis
+
+  # 3. Celery Worker (The Background Chef)
+  worker:
+    build: .
+    container_name: tracker_worker
+    command: celery -A tracker worker -l info
+    volumes:
+      - .:/app
+    env_file: .env
+    depends_on:
+      - redis
+      - web
+
+  # 4. Celery Beat (Optional: The Alarm Clock for nightly cleanup)
+  beat:
+    build: .
+    container_name: tracker_beat
+    command: celery -A tracker beat -l info
+    volumes:
+      - .:/app
+    env_file: .env
+    depends_on:
+      - redis

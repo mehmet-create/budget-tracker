@@ -48,13 +48,22 @@ class SignUpForm(forms.ModelForm):
         model = User
         fields = ["username", "first_name", "last_name", "email"]
 
+    # ... inside class SignUpForm(forms.ModelForm): ...
+
     def clean_username(self):
         username = self.cleaned_data.get('username')
-        if username and username != self.instance.username:
-            if User.objects.filter(username__iexact=username).exists():
-                raise forms.ValidationError("That username is already taken.")     
+        if username:
+            existing_user = User.objects.filter(username__iexact=username).first()
+            
+            if existing_user:
+                if existing_user.is_active:
+                    raise forms.ValidationError("That username is already taken.")
+                else:
+                    existing_user.delete()
+                    
         return username
     
+        
     def clean_first_name(self):
         first_name = self.cleaned_data.get('first_name')
         if any(char.isdigit() for char in first_name):
@@ -69,8 +78,15 @@ class SignUpForm(forms.ModelForm):
     
     def clean_email(self):
         email = self.cleaned_data.get('email')
-        if email and User.objects.filter(email__iexact=email).exists():
-            raise forms.ValidationError("That email address is already in use.")
+        if email:
+            existing_user = User.objects.filter(email__iexact=email).first()
+            
+            if existing_user:
+                if existing_user.is_active:
+                    raise forms.ValidationError("That email address is already in use.")
+                else:
+                    existing_user.delete()
+                    
         return email
     
     def clean_password(self):

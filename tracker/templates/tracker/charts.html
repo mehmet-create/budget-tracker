@@ -1,137 +1,174 @@
 {% extends 'tracker/base.html' %}
+{% load tracker_filters %}
+
+{% block title %}Financial Visuals{% endblock %}
 
 {% block content %}
+<div class="container mt-4">
+    <div class="text-center mb-5">
+        <h2 class="fw-bold">Financial Analysis</h2>
+        <p class="text-muted">Visualizing your income, expenses, and spending habits.</p>
+        
+        <div class="d-inline-block px-4 py-2 rounded-pill shadow-sm {% if balance >= 0 %}bg-success bg-opacity-10 text-success border border-success{% else %}bg-danger bg-opacity-10 text-danger border border-danger{% endif %}">
+            <span class="fw-bold me-2">Net Balance:</span>
+            <span class="fs-5 fw-bold">{% currency balance %}</span>
+        </div>
+    </div>
 
-<h2 class="
-    {% if balance_status == 'positive' %} 
-        text-success 
-    {% else %} 
-        text-danger 
-    {% endif %}
-">
-    Financial Charts
-</h2>
-<div class="
-    {% if balance_status == 'positive' %} 
-        legend-green 
-    {% else %} 
-        legend-red 
-    {% endif %}
-">
-    Financial Overview ({{ CUSTOM_CURRENCY_SYMBOL }})
+    <div class="row g-4">
+        <div class="col-lg-6">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-header bg-white py-3">
+                    <h5 class="mb-0 fw-bold text-primary"><i class="fas fa-chart-bar me-2"></i>Income vs Expense</h5>
+                </div>
+                <div class="card-body">
+                    <div style="position: relative; height: 350px;">
+                        <canvas id="financeChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-6">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-header bg-white py-3">
+                    <h5 class="mb-0 fw-bold text-warning"><i class="fas fa-chart-pie me-2"></i>Spending Breakdown</h5>
+                </div>
+                <div class="card-body d-flex align-items-center justify-content-center">
+                    {% if category_values %}
+                        <div style="position: relative; height: 350px; width: 100%;">
+                            <canvas id="expensePie"></canvas>
+                        </div>
+                    {% else %}
+                        <div class="text-center text-muted py-5">
+                            <i class="fas fa-search-dollar fa-3x mb-3 opacity-25"></i>
+                            <p>No expense data found to display.</p>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-
-<style>
-    canvas {
-        margin-bottom: 50px;
-        max-width: 600px;
-    }
-</style>
-
-<h3>Overall Financial Summary</h3>
-<canvas id="financeChart"></canvas>
-
-<script>
-const barCtx = document.getElementById('financeChart').getContext('2d');
-
-const balanceColor = '{{ balance_color }}';
-
-new Chart(barCtx, {
-    type: 'bar',
-    data: {
-        labels: ['Income', 'Expense', 'Balance'],
-        datasets: [{
-            label: 'Financial Overview ({{ CUSTOM_CURRENCY_SYMBOL }})',
-            data: [
-                {{ total_income }},
-                {{ total_expense }},
-                {{ balance }}
-            ],
-            backgroundColor: ['#4CAF50', '#F44336', balanceColor], 
-            borderColor: ['#388E3C', '#D32F2F', balanceColor], 
-            borderWidth: 1
-        }]
-    },
-    options: {
-        responsive: true,
-        plugins: {
-            legend: {
-                display: false
-            }
-        },
-        scales: {
-            y: { beginAtZero: true }
-        }
-    }
-});
-</script>
-
-
-<!-- =======================
-     PIE CHART
-=========================== -->
-<h3>Expenses by Category</h3>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
 
-<canvas id="expensePie"></canvas>
-
-<div style="max-width: 500px; margin: auto; padding: 20px;">
-    <canvas id="expensePie"></canvas>
-</div>
-
 <script>
-const pieCtx = document.getElementById('expensePie').getContext('2d');
+    // --- Data from Django ---
+    const income = {{ total_income|default:0 }};
+    const expense = {{ total_expense|default:0 }};
+    const balance = {{ balance|default:0 }};
+    const currencySymbol = "{{ CUSTOM_CURRENCY_SYMBOL }}";
 
-new Chart(pieCtx, {
-    type: 'pie',
-    data: {
-        labels: {{ category_labels|safe|title }},
-        datasets: [{
-            data: {{ category_values|safe|title }},
-            backgroundColor: [
-                '#FF6384', '#36A2EB', '#FFCE56', '#4CAF50',
-                '#9C27B0', '#FF9800', '#009688', '#673AB7'
-            ],
-            borderWidth: 2
-        }]
-    },
-    plugins: [ChartDataLabels],
-    options: {
-        responsive: true,
-        maintainAspectRatio: true,
-        layout: {
-            padding: 40
+    // --- 1. BAR CHART CONFIG ---
+    const barCtx = document.getElementById('financeChart').getContext('2d');
+    const balanceColor = balance >= 0 ? '#198754' : '#dc3545'; // Bootstrap Success/Danger colors
+
+    new Chart(barCtx, {
+        type: 'bar',
+        data: {
+            labels: ['Income', 'Expense', 'Net Balance'],
+            datasets: [{
+                label: 'Amount',
+                data: [income, expense, balance],
+                backgroundColor: [
+                    '#198754', // Green for Income
+                    '#dc3545', // Red for Expense
+                    balanceColor
+                ],
+                borderWidth: 1,
+                borderRadius: 5
+            }]
         },
-        plugins: {
-            legend: {
-                position: 'bottom',
-                labels: {
-                    padding: 20
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            return currencySymbol + context.raw.toLocaleString();
+                        }
+                    }
                 }
             },
-            datalabels: {
-                color: '#444',
-                anchor: 'end',  
-                align: 'end',   
-                offset: 10,   
-                font: {
-                    weight: 'bold',
-                    size: 12
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    grid: { color: '#f0f0f0' }
                 },
-                formatter: (value, ctx) => {
-                    let sum = 0;
-                    let dataArr = ctx.chart.data.datasets[0].data;
-                    dataArr.map(data => { sum += data; });
-                    let percentage = (value * 100 / sum).toFixed(1) + "%";
-                    return percentage;
+                x: {
+                    grid: { display: false }
                 }
             }
         }
-    }
-});
+    });
+
+    // --- 2. PIE CHART CONFIG ---
+    {% if category_values %}
+    const pieCtx = document.getElementById('expensePie').getContext('2d');
+    
+    // Calculate total for percentage
+    const pieData = {{ category_values|safe }};
+    const totalExpense = pieData.reduce((a, b) => a + b, 0);
+
+    new Chart(pieCtx, {
+        type: 'doughnut', // Doughnut looks more modern than Pie
+        data: {
+            labels: {{ category_labels|safe }},
+            datasets: [{
+                data: pieData,
+                backgroundColor: [
+                    '#4e73df', '#1cc88a', '#36b9cc', '#f6c23e', 
+                    '#e74a3b', '#858796', '#5a5c69', '#fd7e14'
+                ],
+                borderWidth: 2,
+                borderColor: '#fff',
+                hoverOffset: 4
+            }]
+        },
+        plugins: [ChartDataLabels],
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            layout: {
+                padding: 20
+            },
+            plugins: {
+                legend: {
+                    position: 'bottom',
+                    labels: {
+                        usePointStyle: true,
+                        padding: 20
+                    }
+                },
+                datalabels: {
+                    color: '#fff',
+                    font: {
+                        weight: 'bold',
+                        size: 11
+                    },
+                    formatter: (value) => {
+                        let percentage = (value * 100 / totalExpense).toFixed(1) + "%";
+                        // Only show label if slice is big enough (>5%)
+                        return (value * 100 / totalExpense) > 5 ? percentage : null;
+                    }
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            let label = context.label || '';
+                            if (label) { label += ': '; }
+                            label += currencySymbol + context.raw.toLocaleString();
+                            return label;
+                        }
+                    }
+                }
+            }
+        }
+    });
+    {% endif %}
 </script>
-
-
 {% endblock %}

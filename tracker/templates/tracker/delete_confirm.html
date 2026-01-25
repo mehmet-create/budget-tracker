@@ -1,41 +1,59 @@
 {% extends 'tracker/base.html' %}
+{% load tracker_filters %}
+
+{% block title %}Delete Transaction{% endblock %}
 
 {% block content %}
-<div class="container mt-5">
-    <div class="card shadow p-4">
-        <h2 class="card-title text-danger mb-4">Confirm Transaction Deletion</h2>
-
-        <p class="fs-5">
-            Are you sure you want to delete the following transaction?
-        </p>
-        
-        <ul class="list-group list-group-flush mb-4">
-            <li class="list-group-item"><strong>Type:</strong> {{ transaction.type }}</li>
-            <li class="list-group-item"><strong>Category:</strong> {{ transaction.category }}</li>
-            <li class="list-group-item"><strong>Amount:</strong> {{ CUSTOM_CURRENCY_SYMBOL }}{{ transaction.amount }}</li>
-            <li class="list-group-item"><strong>Date:</strong> {{ transaction.date }}</li>
-            {% if transaction.description %}
-            <li class="list-group-item"><strong>Description:</strong> {{ transaction.description }}</li>
-            {% endif %}
-        </ul>
-
-        <p class="text-muted">
-            This action cannot be undone.
-        </p>
-
-        <hr>
-
-        <form method="post">
-            {% csrf_token %}
+<div class="row justify-content-center mt-5">
+    <div class="col-md-6 col-lg-5">
+        <div class="card border-0 shadow-lg">
+            <div class="card-header bg-danger text-white py-3 text-center">
+                <h5 class="mb-0 fw-bold"><i class="fas fa-exclamation-triangle me-2"></i>Confirm Deletion</h5>
+            </div>
             
-            <button type="submit" class="btn btn-danger me-2">
-                Yes, Delete Transaction
-            </button>
-            
-            <a href="{% url 'transactions' %}" class="btn btn-secondary">
-                No, Go Back
-            </a>
-        </form>
+            <div class="card-body p-4 text-center">
+                <p class="text-muted mb-4">Are you sure you want to permanently delete this transaction? This action cannot be undone.</p>
+                
+                <div class="card bg-light border-0 mb-4 text-start">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between mb-2 border-bottom pb-2">
+                            <span class="text-muted small text-uppercase fw-bold">Type</span>
+                            <span class="fw-bold {% if transaction.type == 'Income' %}text-success{% else %}text-danger{% endif %}">
+                                {{ transaction.type }}
+                            </span>
+                        </div>
+                        <div class="d-flex justify-content-between mb-2 border-bottom pb-2">
+                            <span class="text-muted small text-uppercase fw-bold">Category</span>
+                            <span class="fw-bold text-dark">{{ transaction.category }}</span>
+                        </div>
+                        <div class="d-flex justify-content-between mb-2 border-bottom pb-2">
+                            <span class="text-muted small text-uppercase fw-bold">Amount</span>
+                            <span class="fw-bold text-dark">{% currency transaction.amount %}</span>
+                        </div>
+                        <div class="d-flex justify-content-between mb-2">
+                            <span class="text-muted small text-uppercase fw-bold">Date</span>
+                            <span class="text-dark">{{ transaction.date }}</span>
+                        </div>
+                        {% if transaction.description %}
+                        <div class="mt-2 pt-2 border-top">
+                            <span class="text-muted small text-uppercase fw-bold d-block mb-1">Description</span>
+                            <span class="text-dark small">{{ transaction.description }}</span>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <form method="post" class="d-grid gap-2">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-danger fw-bold">
+                        <i class="fas fa-trash-alt me-2"></i> Yes, Delete Transaction
+                    </button>
+                    <a href="{% url 'transactions' %}" class="btn btn-light text-muted">
+                        Cancel
+                    </a>
+                </form>
+            </div>
+        </div>
     </div>
 </div>
-{% endblock content %}
+{% endblock %}

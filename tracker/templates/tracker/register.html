@@ -1,73 +1,84 @@
-{% extends "tracker/base.html" %}
+{% extends 'tracker/base.html' %}
+
+{% block title %}Create Account{% endblock %}
 
 {% block content %}
-<div class="d-flex justify-content-center mt-4 mb-5">
-    <div class="card shadow-sm p-4" style="max-width: 420px; width: 100%; border-radius: 12px;">
-        <h4 class="text-center mb-3">Create Account</h4>
-
-        <form method="POST" novalidate>
-            {% csrf_token %}
-
-            <div class="mb-2">
-                <label class="form-label">Username</label>
-                {{ form.username }}
-                {% if form.username.errors %}
-                    {% for error in form.username.errors %}
-                        <div class="text-danger small mt-1">{{ error }}</div>
-                    {% endfor %}
-                {% endif %}
+<div class="row justify-content-center mt-4 mb-5">
+    <div class="col-md-6 col-lg-5">
+        <div class="card border-0 shadow-sm p-4">
+            
+            <div class="text-center mb-4">
+                <div class="icon-shape bg-primary bg-opacity-10 text-primary p-3 rounded-circle d-inline-block mb-3">
+                    <i class="fas fa-user-plus fa-2x"></i>
+                </div>
+                <h3 class="fw-bold">Create Account</h3>
+                <p class="text-muted small">Join us to start tracking your budget effectively</p>
             </div>
 
-            <div class="mb-2">
-                <label class="form-label">First Name</label>
-                {{ form.first_name }}
-                {% if form.password.errors %}
-                    <div class="text-danger small">{{ form.first_name.errors.0 }}</div>
-                {% endif %}
+            <form method="POST" novalidate>
+                {% csrf_token %}
+
+                <div class="mb-3">
+                    <label class="form-label small fw-bold text-muted text-uppercase">Username</label>
+                    {{ form.username }}
+                    {% if form.username.errors %}
+                        <div class="text-danger small mt-1">{{ form.username.errors.0 }}</div>
+                    {% endif %}
+                </div>
+
+                <div class="row g-2 mb-3">
+                    <div class="col-md-6">
+                        <label class="form-label small fw-bold text-muted text-uppercase">First Name</label>
+                        {{ form.first_name }}
+                        {% if form.first_name.errors %}
+                            <div class="text-danger small mt-1">{{ form.first_name.errors.0 }}</div>
+                        {% endif %}
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label small fw-bold text-muted text-uppercase">Last Name</label>
+                        {{ form.last_name }}
+                        {% if form.last_name.errors %}
+                            <div class="text-danger small mt-1">{{ form.last_name.errors.0 }}</div>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label small fw-bold text-muted text-uppercase">Email Address</label>
+                    {{ form.email }}
+                    {% if form.email.errors %}
+                        <div class="text-danger small mt-1">{{ form.email.errors.0 }}</div>
+                    {% endif %}
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label small fw-bold text-muted text-uppercase">Password</label>
+                    {{ form.password }}
+                    <div class="form-text small text-muted">Must be at least 8 characters long.</div>
+                    {% if form.password.errors %}
+                        <div class="text-danger small mt-1">{{ form.password.errors.0 }}</div>
+                    {% endif %}
+                </div>
+
+                <div class="mb-4">
+                    <label class="form-label small fw-bold text-muted text-uppercase">Confirm Password</label>
+                    {{ form.confirm_password }}
+                    {% if form.confirm_password.errors %}
+                        <div class="text-danger small mt-1">{{ form.confirm_password.errors.0 }}</div>
+                    {% endif %}
+                </div>
+
+                <div class="d-grid">
+                    <button type="submit" class="btn btn-primary btn-lg shadow-sm">Create Account</button>
+                </div>
+            </form>
+
+            <div class="text-center mt-4 pt-3 border-top">
+                <p class="small text-muted mb-0">
+                    Already have an account? <a href="{% url 'login' %}" class="text-decoration-none fw-bold">Log in</a>
+                </p>
             </div>
-
-            <div class="mb-2">
-                <label class="form-label">Last Name</label>
-                {{ form.last_name }}
-                {% if form.password.errors %}
-                    <div class="text-danger small">{{ form.last_name.errors.0 }}</div>
-                {% endif %}
-            </div>
-
-            <div class="mb-2">
-                <label class="form-label">Email Address</label>
-                {{ form.email }}
-                {% for error in form.email.errors %}
-                    <div class="text-danger small">{{ form.email.errors.0 }}</div>
-                {% endfor %}
-            </div>
-
-            <div class="mb-2">
-                <label class="form-label">Password</label>
-                {{ form.password }}
-                {% if form.password.errors %}
-                    {% for error in form.password.errors %}
-                        <div class="text-danger small mt-1">{{ error }}</div>
-                    {% endfor %}
-                {% endif %}
-            </div>
-
-            <div class="mb-3">
-                <label class="form-label">Confirm Password</label>
-                {{ form.confirm_password }}
-                {% if form.confirm_password.errors %}
-                    {% for error in form.confirm_password.errors %}
-                        <div class="text-danger small mt-1">{{ error }}</div>
-                    {% endfor %}
-                {% endif %}
-            </div>
-
-            <button type="submit" class="btn btn-primary w-100">Create Account</button>
-        </form>
-
-        <p class="text-center mt-2 small">
-            Already have an account? <a href="{% url 'login' %}">Log in</a>
-        </p>
+        </div>
     </div>
 </div>
 {% endblock %}
