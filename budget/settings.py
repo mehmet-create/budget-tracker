@@ -68,15 +68,6 @@ MIDDLEWARE = [
     'whitenoise.middleware.WhiteNoiseMiddleware',
 ]
 
-CACHES = {
-    "default": {
-        "BACKEND": "django_redis.cache.RedisCache",
-        "LOCATION": f"redis://{os.getenv('REDIS_HOST', '127.0.0.1')}:6379/1",
-        "OPTIONS": {
-            "CLIENT_CLASS": "django_redis.client.DefaultClient",
-        }
-    }
-}
 
 ROOT_URLCONF = 'budget.urls'
 
@@ -159,6 +150,32 @@ AVAILABLE_CURRENCIES = {
     'GBP': '£',
 }
 
+redis_url = os.getenv('REDIS_URL', 'redis://127.0.0.1:6379/0')
+
+# 2. Fix for Celery: rediss:// URLs MUST have ssl_cert_reqs defined
+if redis_url.startswith('rediss://'):
+    # This appends the required SSL parameter for Upstash/Cloud Redis
+    CELERY_BROKER_URL = f"{redis_url}?ssl_cert_reqs=none"
+    CELERY_RESULT_BACKEND = f"{redis_url}?ssl_cert_reqs=none"
+else:
+    CELERY_BROKER_URL = redis_url
+    CELERY_RESULT_BACKEND = redis_url
+
+CELERY_TASK_ALWAYS_EAGER = False 
+CELERY_ACCEPT_CONTENT = ['json']
+CELERY_TASK_SERIALIZER = 'json'
+
+CACHES = {
+    "default": {
+        "BACKEND": "django_redis.cache.RedisCache",
+        "LOCATION": CELERY_BROKER_URL,
+        "OPTIONS": {
+            "CLIENT_CLASS": "django_redis.client.DefaultClient",
+            "CONNECTION_POOL_KWARGS": {"ssl_cert_reqs": None}
+        }
+    }
+}
+
 # --- LOGIN/LOGOUT REDIRECTS ---
 LOGIN_REDIRECT_URL = 'dashboard' 
 LOGOUT_REDIRECT_URL = 'login'
@@ -174,13 +191,4 @@ CSRF_FAILURE_VIEW = 'tracker.views.csrf_failure_json'
 if 'whitenoise.middleware.WhiteNoiseMiddleware' not in MIDDLEWARE:
     MIDDLEWARE.insert(1, 'whitenoise.middleware.WhiteNoiseMiddleware')
 
-# budget/settings.py
 
-# False = Use the real Docker Redis we just started
-CELERY_TASK_ALWAYS_EAGER = False 
-
-# Connect to localhost:6379
-CELERY_BROKER_URL = os.getenv('REDIS_URL', 'redis://127.0.0.1:6379/0')
-CELERY_RESULT_BACKEND = os.getenv('REDIS_URL', 'redis://127.0.0.1:6379/0')
-CELERY_ACCEPT_CONTENT = ['json']
-CELERY_TASK_SERIALIZER = 'json'    

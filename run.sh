@@ -9,7 +9,7 @@ set -e
 celery -A budget worker --loglevel=info --concurrency 2 --pool=solo &
 
 # 3. Give Celery a moment to establish its connection
-sleep 3
+sleep 5
 
 # 4. Start the Django Web Server
 gunicorn budget.wsgi:application
