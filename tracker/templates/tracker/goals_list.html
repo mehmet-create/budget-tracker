@@ -17,7 +17,7 @@
         <form id="periodForm" method="GET" action="{% url 'goals_list' %}" class="d-flex justify-content-md-end gap-2 mt-2 mt-md-0">
             <select name="month" id="monthSelect" class="form-select w-auto shadow-sm">
                 {% for m_num, m_name in months_choices %}
-                    <option value="{{ m_num }}" {% if m_num == view_month %}selected{% endif %}>{{ m_name }}</option>
+                    <option value="{{ m_num }}" {% if m_num == view_month.month %}selected{% endif %}>{{ m_name }}</option>
                 {% endfor %}
             </select>
             <select name="year" id="yearSelect" class="form-select w-auto shadow-sm">
@@ -33,19 +33,25 @@
 {% if not is_history %}
     {% if can_import or goals %}
     <div class="d-flex gap-2 mb-4">
+        
         {% if can_import %}
-        <a href="{% url 'import_previous_goals' %}?month={{ view_month }}&year={{ view_year }}" class="btn btn-outline-primary shadow-sm">
-            <i class="fas fa-file-import me-1"></i> Copy Last Month's Goals
-        </a>
+        <form method="POST" action="{% url 'import_previous_goals' %}">
+            {% csrf_token %}
+            <input type="hidden" name="month" value="{{ view_month.month }}">
+            <input type="hidden" name="year" value="{{ view_year }}">
+            
+            <button type="submit" class="btn btn-outline-primary shadow-sm">
+                <i class="fas fa-file-import me-1"></i> Copy Last Month's Goals
+            </button>
+        </form>
         {% endif %}
         
         {% if goals %}
-        <a href="{% url 'clear_monthly_goals' year=view_year month=view_month %}" 
-           class="btn btn-outline-danger shadow-sm ms-auto"
-           onclick="return confirm('Are you sure? This will delete all goals for this month.');">
+        <button type="button" class="btn btn-outline-danger shadow-sm" data-bs-toggle="modal" data-bs-target="#clearGoalsModal">
             <i class="fas fa-trash-alt me-1"></i> Clear All
-        </a>
+        </button>
         {% endif %}
+        
     </div>
     {% endif %}
 {% endif %}
@@ -68,14 +74,16 @@
                 {% else %}
                     <form method="POST" action="{% url 'set_goals' %}">
                         {% csrf_token %}
+                        
+                        <input type="hidden" name="month" value="{{ view_month.month }}">
+                        <input type="hidden" name="year" value="{{ view_year }}">
+                        
                         <div class="mb-3">
-                            <label class="form-label small fw-bold text-muted text-uppercase">Category</label>
-                            <select name="category" class="form-select" required>
-                                <option value="" selected disabled>Select...</option>
-                                {% for value, label in categories %}
-                                    <option value="{{ value }}">{{ label }}</option>
-                                {% endfor %}
-                            </select>
+                            <label for="{{ form.category.id_for_label }}" class="form-label fw-bold">Category</label>
+                            {{ form.category }}
+                            {% if form.category.errors %}
+                                <div class="text-danger small">{{ form.category.errors.0 }}</div>
+                            {% endif %}
                         </div>
                         <div class="mb-4">
                             <label class="form-label small fw-bold text-muted text-uppercase">Target Amount</label>
@@ -116,7 +124,7 @@
                         <tbody>
                             {% for goal in goals %}
                             <tr>
-                                <td class="ps-4 fw-bold text-dark">{{ goal.category }}</td>
+                                <td class="fw-bold">{{ goal.get_category_display }}</td>
                                 
                                 <td>
                                     <div class="d-flex justify-content-between small mb-1">
@@ -184,5 +192,35 @@
         }
     });
 </script>
+
+<div class="modal fade" id="clearGoalsModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header border-0 pb-0">
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body text-center pb-4">
+                <div class="text-danger mb-3">
+                    <i class="fas fa-exclamation-circle fa-4x"></i>
+                </div>
+                <h4 class="fw-bold mb-2">Are you sure?</h4>
+                <p class="text-muted">
+                    This will delete <b>all budget goals</b> for {{ view_month|date:"F Y" }}.
+                    <br>This action cannot be undone.
+                </p>
+            </div>
+            <div class="modal-footer justify-content-center border-0 pt-0 pb-4">
+                <button type="button" class="btn btn-light px-4" data-bs-dismiss="modal">Cancel</button>
+                
+                <form method="POST" action="{% url 'clear_monthly_goals' year=view_year month=view_month.month %}">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-danger px-4">
+                        Yes, Clear All
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
 
 {% endblock %}

@@ -12,33 +12,40 @@
                     <i class="fas fa-user-plus fa-2x"></i>
                 </div>
                 <h3 class="fw-bold">Create Account</h3>
-                <p class="text-muted small">Join us to start tracking your budget effectively</p>
+                <p class="text-secondary small">Join us to start tracking your budget effectively</p>
             </div>
+
 
             <form method="POST" novalidate>
                 {% csrf_token %}
 
                 <div class="mb-3">
-                    <label class="form-label small fw-bold text-muted text-uppercase">Username</label>
+                    <label class="form-label fw-bold small text-muted text-uppercase">Username</label>
                     {{ form.username }}
                     {% if form.username.errors %}
-                        <div class="text-danger small mt-1">{{ form.username.errors.0 }}</div>
+                        <div class="text-danger small mt-1">
+                            <i class="fas fa-exclamation-triangle me-1"></i> {{ form.username.errors.0 }}
+                        </div>
                     {% endif %}
                 </div>
 
                 <div class="row g-2 mb-3">
                     <div class="col-md-6">
-                        <label class="form-label small fw-bold text-muted text-uppercase">First Name</label>
+                        <label class="form-label fw-bold small text-muted text-uppercase">First Name</label>
                         {{ form.first_name }}
                         {% if form.first_name.errors %}
-                            <div class="text-danger small mt-1">{{ form.first_name.errors.0 }}</div>
+                            <div class="text-danger small mt-1">
+                                <i class="fas fa-exclamation-triangle me-1"></i> {{ form.first_name.errors.0 }}
+                            </div>
                         {% endif %}
                     </div>
                     <div class="col-md-6">
                         <label class="form-label small fw-bold text-muted text-uppercase">Last Name</label>
                         {{ form.last_name }}
                         {% if form.last_name.errors %}
-                            <div class="text-danger small mt-1">{{ form.last_name.errors.0 }}</div>
+                            <div class="text-danger small mt-1">
+                                <i class="fas fa-exclamation-triangle me-1"></i> {{ form.last_name.errors.0 }}
+                            </div>
                         {% endif %}
                     </div>
                 </div>
@@ -47,7 +54,9 @@
                     <label class="form-label small fw-bold text-muted text-uppercase">Email Address</label>
                     {{ form.email }}
                     {% if form.email.errors %}
-                        <div class="text-danger small mt-1">{{ form.email.errors.0 }}</div>
+                        <div class="text-danger small mt-1">
+                            <i class="fas fa-exclamation-triangle me-1"></i> {{ form.email.errors.0 }}
+                        </div>
                     {% endif %}
                 </div>
 
@@ -56,7 +65,9 @@
                     {{ form.password }}
                     <div class="form-text small text-muted">Must be at least 8 characters long.</div>
                     {% if form.password.errors %}
-                        <div class="text-danger small mt-1">{{ form.password.errors.0 }}</div>
+                        <div class="text-danger small mt-1">
+                            <i class="fas fa-exclamation-triangle me-1"></i> {{ form.password.errors.0 }}
+                        </div>
                     {% endif %}
                 </div>
 
@@ -64,7 +75,9 @@
                     <label class="form-label small fw-bold text-muted text-uppercase">Confirm Password</label>
                     {{ form.confirm_password }}
                     {% if form.confirm_password.errors %}
-                        <div class="text-danger small mt-1">{{ form.confirm_password.errors.0 }}</div>
+                        <div class="text-danger small mt-1">
+                            <i class="fas fa-exclamation-triangle me-1"></i> {{ form.confirm_password.errors.0 }}
+                        </div>
                     {% endif %}
                 </div>
 

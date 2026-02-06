@@ -4,7 +4,6 @@ from .models import Transaction, BudgetGoal, UserProfile
 class TransactionAdmin(admin.ModelAdmin):
     list_display = (
         'user',
-        'title', 
         'amount', 
         'type', 
         'category', 

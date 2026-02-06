@@ -1,328 +1,691 @@
 import json
+import csv
+import io
+import re
+import codecs
 import logging
 from datetime import datetime, timedelta
 from collections import defaultdict
 from decimal import Decimal
-
-# Django Imports
 from django.shortcuts import render, redirect, get_object_or_404
 from django.urls import reverse
 from django.contrib.auth.decorators import login_required
-from django.contrib.auth import alogin, logout, update_session_auth_hash, get_user_model
+from django.contrib.auth import login, logout, update_session_auth_hash, get_user_model
 from django.contrib import messages
+from django.contrib.auth.views import PasswordResetView
+from django.contrib.auth.forms import SetPasswordForm
+from django.contrib.auth import views as auth_views
+from django.contrib.auth.tokens import PasswordResetTokenGenerator
 from django.http import JsonResponse
 from django.utils import timezone
+from django.utils.encoding import force_str
+from django.utils.http import urlsafe_base64_decode
+from django.core.cache import cache
 from django.db.models import Sum, Q
 from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
 from django.conf import settings
-from asgiref.sync import sync_to_async
-
-# Local Imports
+from django.views.decorators.http import require_POST, require_GET, require_http_methods
+from django.db import transaction
 from .models import Transaction, BudgetGoal, UserProfile, BudgetLock
-from .forms import SignUpForm, BudgetGoalForm, ProfileUpdateForm
+from .forms import SignUpForm, BudgetGoalForm, ProfileUpdateForm, TransactionForm, CSVUploadForm
 from . import services, schemas
 from .tasks import send_email_task
 from .ratelimit import check_ratelimit, RateLimitError
+from .ai_services import scan_receipt
+from .ai_services import audit_subscriptions
+from openpyxl import load_workbook
+
 
 logger = logging.getLogger(__name__)
 User = get_user_model()
 
-# ==========================================
-#  HELPERS
-# ==========================================
 def get_ip(request):
     x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
     return x_forwarded_for.split(',')[0] if x_forwarded_for else request.META.get('REMOTE_ADDR')
 
 def is_json_request(request):
-    return request.headers.get('Accept') == 'application/json'
+    accept = request.headers.get('Accept', '')
+    return 'application/json' in accept and 'text/html' not in accept
 
-# ==========================================
-#  SECTION 1: ASYNC AUTHENTICATION
-#  (Fixed: Uses await request.auser() for safe DB access)
-# ==========================================
-
-async def login_view(request):
+def login_view(request):
+    ip = get_ip(request)
+    username = request.POST.get('username', '').strip()
+    
+    # Composite key: Blocks "IP + Username" pair
+    ratelimit_key = f"login_fail_{ip}_{username}" if username else f"login_fail_{ip}"
+    
     try:
-        await check_ratelimit(f"login_ip_{get_ip(request)}", limit=10, period=60)
+        check_ratelimit(ratelimit_key, limit=10, period=60)
     except RateLimitError as e:
-        if is_json_request(request): return JsonResponse({'error': str(e)}, status=429)
+        if is_json_request(request):
+            return JsonResponse({'error': str(e)}, status=429)
         messages.error(request, str(e))
-        return await sync_to_async(render)(request, 'tracker/login.html')
+        return render(request, 'tracker/login.html')
 
     if request.method == 'POST':
         dto = schemas.LoginDTO(
-            username=request.POST.get('username'),
+            username=username,
             password=request.POST.get('password')
         )
-        user, status = await services.login_service(request, dto)
-
-        if is_json_request(request):
-            if status == "success":
-                await alogin(request, user)
-                return JsonResponse({'status': 'success', 'user': user.username})
-            return JsonResponse({'status': 'error', 'code': status}, status=401)
+        user, status = services.login_service(request, dto)
 
         if status == "success":
-            await alogin(request, user)
+            login(request, user)
+            cache.delete(f"ratelimit:{ratelimit_key}")
+            
+            if is_json_request(request):
+                return JsonResponse({'status': 'success', 'user': user.username})
             return redirect('dashboard')
-        elif status == "unverified":
-            messages.warning(request, "Account not verified.")
-            await sync_to_async(request.session.__setitem__)('unverified_user_id', user.id)
-            return redirect('verify_registration')
+
         else:
-            messages.error(request, "Invalid credentials.")
+            current_history = cache.get(f"ratelimit:{ratelimit_key}", [])
+            attempts_used = len(current_history)
+            remaining = 10 - attempts_used
+            
+            error_msg = "Invalid credentials."
+            if status == "unverified":
+                error_msg = "Account not verified."
+            
+            if remaining <= 3 and remaining > 0:
+                error_msg += f" Warning: {remaining} attempts remaining."
+            
+            if is_json_request(request):
+                return JsonResponse({'status': 'error', 'code': status, 'message': error_msg}, status=401)
 
-    return await sync_to_async(render)(request, 'tracker/login.html')
+            messages.error(request, error_msg)
+            
+            if status == "unverified":
+                request.session['unverified_user_id'] = user.id
+                return redirect('verify_registration')
 
-async def register_view(request):
+    return render(request, 'tracker/login.html')
+
+
+@require_http_methods(["GET", "POST"])
+def register_view(request):
     try:
-        await check_ratelimit(f"reg_ip_{get_ip(request)}", limit=50, period=3600)
+        check_ratelimit(f"reg_ip_{get_ip(request)}", limit=50, period=3600)
     except RateLimitError as e:
-        if is_json_request(request): return JsonResponse({'error': str(e)}, status=429)
+        if is_json_request(request): 
+            return JsonResponse({'status': 'error', 'message': str(e)}, status=429)
         messages.error(request, str(e))
         return redirect('login')
 
     if request.method == 'POST':
-        form = SignUpForm(request.POST)
-        is_valid = await sync_to_async(form.is_valid)()
-
-        if is_valid:
+        if request.content_type == 'application/json':
             try:
-                # Use 'password' matching your forms.py
+                data = json.loads(request.body)
+            except json.JSONDecodeError:
+                return JsonResponse({'status': 'error', 'message': 'Invalid JSON'}, status=400)
+        else:
+            data = request.POST
+        
+        form = SignUpForm(data)
+        
+        if form.is_valid():
+            try:
                 dto = schemas.RegisterDTO(
                     username=form.cleaned_data['username'],
                     email=form.cleaned_data['email'],
-                    password=form.cleaned_data['password'] 
+                    password=form.cleaned_data['password'],
+                    first_name=form.cleaned_data.get('first_name', ''),
+                    last_name=form.cleaned_data.get('last_name', '')
                 )
-                user, code = await services.register_user(dto)
+                
+                user, code = services.register_user(dto)
                 
                 send_email_task.delay(user.email, "Verification Code", f"Your code: {code}")
-                await sync_to_async(request.session.__setitem__)('unverified_user_id', user.id)
+                request.session['unverified_user_id'] = user.id
 
                 if is_json_request(request):
-                    return JsonResponse({'status': 'success', 'email': user.email}, status=201)
+                    return JsonResponse({
+                        'status': 'success', 
+                        'message': 'User registered successfully. Check email for code.',
+                        'email': user.email
+                    }, status=201)
 
                 messages.success(request, f"Code sent to {user.email}")
                 return redirect('verify_registration')
 
             except services.ServiceError as e:
-                if is_json_request(request): return JsonResponse({'error': str(e)}, status=400)
+                if is_json_request(request): 
+                    return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
                 messages.error(request, str(e))
         else:
+            if is_json_request(request):
+                return JsonResponse({
+                    'status': 'error',
+                    'message': 'Validation failed',
+                    'errors': form.errors
+                }, status=400)
             messages.error(request, "Please check the form.")
+
     else:
+        if is_json_request(request):
+            return JsonResponse({
+                'status': 'success',
+                'message': 'Register endpoint ready.',
+                'method': 'POST'
+            })
         form = SignUpForm()
     
-    return await sync_to_async(render)(request, 'tracker/register.html', {'form': form})
+    return render(request, 'tracker/register.html', {'form': form})
 
-async def verify_registration(request):
-    # 1. Get the ID stored in the session
-    user_id = await sync_to_async(request.session.get)('unverified_user_id')
+
+@require_http_methods(["GET", "POST"])
+def verify_registration(request):
+    try:
+        check_ratelimit(f"verify_ip_{get_ip(request)}", limit=5, period=900)
+    except RateLimitError as e:
+        if is_json_request(request): 
+            return JsonResponse({'status': 'error', 'message': str(e)}, status=429)
+        messages.error(request, str(e))
+        return redirect('register')
+    user_id = request.session.get('unverified_user_id')
     
-    # If no ID, kick them out
-    if not user_id and not is_json_request(request):
+    if not user_id:
+        if is_json_request(request):
+            return JsonResponse({
+                'status': 'error', 
+                'message': 'No registration session found. Please register first.'
+            }, status=401)
         return redirect('register')
 
-    # 2. Fetch the actual User object to get their email
     try:
-        user_obj = await User.objects.aget(pk=user_id)
+        user_obj = User.objects.get(pk=user_id)
         user_email = user_obj.email
     except User.DoesNotExist:
-        # If user was deleted (e.g. by our cleanup logic), restart
-        await sync_to_async(request.session.flush)()
+        request.session.flush()
+        
+        if is_json_request(request):
+            return JsonResponse({'status': 'error', 'message': 'User not found. Register again.'}, status=404)
+            
         return redirect('register')
 
     if request.method == 'POST':
         code = request.POST.get('code')
         try:
             dto = schemas.VerifyCodeDTO(user_id=user_id, code=code)
-            success, msg = await services.verify_code(dto, acting_user_id=user_id)
+            success, msg = services.verify_code(dto, acting_user_id=user_id)
 
             if is_json_request(request):
                 return JsonResponse({'status': 'success', 'message': msg})
 
             if success:
                 messages.success(request, msg)
-                await sync_to_async(request.session.pop)('unverified_user_id')
+                request.session.pop('unverified_user_id', None)
                 return redirect('login')
 
         except services.ServiceError as e:
-            if is_json_request(request): return JsonResponse({'error': str(e)}, status=400)
+            if is_json_request(request): 
+                return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
             messages.error(request, str(e))
 
-    return await sync_to_async(render)(request, 'tracker/verify_registration.html', {'email': user_email})
+    if is_json_request(request):
+        return JsonResponse({
+            'status': 'success',
+            'message': 'Verification endpoint ready.',
+            'email_to_verify': user_email,
+            'required_fields': ['code']
+        })
 
-async def resend_code(request):
-    user_id = await sync_to_async(request.session.get)('unverified_user_id')
-    if not user_id: return redirect('register')
+    return render(request, 'tracker/verify_registration.html', {'email': user_email})
+
+
+@require_http_methods(["GET", "POST"])
+def resend_code(request):
+    user_id = request.session.get('unverified_user_id')
     
+    if not user_id:
+        if is_json_request(request): 
+            return JsonResponse({'status': 'error', 'message': 'Session expired. Register again.'}, status=401)
+        return redirect('register')
+    
+    if request.method == "GET" and is_json_request(request):
+        return JsonResponse({'status': 'ready', 'message': 'Send POST to resend code.'})
+
+    cache_key = f"resend_code_cooldown_{user_id}"
+    if cache.get(cache_key):
+        msg = "Please wait a minute before requesting another code."
+        if is_json_request(request):
+            return JsonResponse({'status': 'error', 'message': msg}, status=429)
+        messages.warning(request, msg)
+        return redirect('verify_registration')
+
     try:
         dto = schemas.ResendCodeDTO(user_id=user_id)
-        success, code, email = await services.resend_code(dto)
+        # Sync Service Call
+        success, code, email = services.resend_code(dto)
         send_email_task.delay(email, "New Code", f"Your code: {code}")
+
+        cache.set(cache_key, True, 60)
         
-        if is_json_request(request): return JsonResponse({'status': 'sent'})
+        if is_json_request(request): 
+            return JsonResponse({'status': 'success', 'message': 'Code resent'})
+        
         messages.success(request, "Code resent.")
         
     except Exception as e:
+        if is_json_request(request): 
+            return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
         messages.error(request, str(e))
         
     return redirect('verify_registration')
 
-async def verify_email_change(request):
-    # USE request.auser() FOR ASYNC SAFETY
-    user = await request.auser()
-    if not user.is_authenticated: return redirect('login')
+
+@require_http_methods(["GET", "POST"])
+def verify_email_change(request):
+    user = request.user
+    
+    if not user.is_authenticated:
+        if is_json_request(request): 
+            return JsonResponse({'status': 'error', 'message': 'Unauthorized'}, status=401)
+        return redirect('login')
 
     if request.method == 'POST':
-        code = request.POST.get('code')
+        code = None
+        if request.POST:
+            code = request.POST.get('code')
+
+        if not code:
+            try:
+                if request.body:
+                    data = json.loads(request.body)
+                    code = data.get('code')
+            except json.JSONDecodeError:
+                pass    
         try:
             dto = schemas.VerifyEmailChangeDTO(user_id=user.id, code=code)
-            success, msg = await services.verify_email_change(dto)
-            if is_json_request(request): return JsonResponse({'status': 'success'})
-            messages.success(request, msg)
-            return redirect('profile')
+            success, msg = services.verify_email_change(dto)
+            
+            if success:
+                if is_json_request(request):
+                    return JsonResponse({'status': 'success', 'message': msg})
+            
+                messages.success(request, msg)
+                return redirect('profile')
+            else:
+                if is_json_request(request):
+                    return JsonResponse({'status': 'error', 'message': msg}, status=400)
+                messages.error(request, msg)
+                return redirect('verify_email_change')
         except Exception as e:
-            if is_json_request(request): return JsonResponse({'error': str(e)}, status=400)
+            if is_json_request(request): 
+                return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
             messages.error(request, str(e))
-    return await sync_to_async(render)(request, 'tracker/verify_email_change.html')
+            return redirect('verify_email_change')
 
-async def password_change_view(request):
-    # USE request.auser() FOR ASYNC SAFETY
-    user = await request.auser()
-    if not user.is_authenticated: return redirect('login')
+    if is_json_request(request):
+        return JsonResponse({
+            'status': 'ready', 
+            'message': 'Send POST with "code" to verify email change.'
+        })
+
+    return render(request, 'tracker/verify_email_change.html')
+
+
+@require_http_methods(["GET", "POST"])
+def password_change_view(request):
+    user = request.user
+    
+    if not user.is_authenticated:
+        if is_json_request(request): 
+            return JsonResponse({'status': 'error', 'message': 'Unauthorized'}, status=401)
+        return redirect('login')
 
     if request.method == 'POST':
+        data = {}
+        if request.POST:
+            data = request.POST
+
+        else:
+            try:
+                if request.body:
+                    data = json.loads(request.body)
+            except json.JSONDecodeError:
+                pass
         try:
             dto = schemas.PasswordChangeDTO(
-                old_password=request.POST.get('old_password'),
-                new_password=request.POST.get('new_password1')
+                user_id=user.id,
+                old_password=data.get('old_password'),
+                new_password=data.get('new_password1'),
+                confirm_new_password=data.get('new_password2')
             )
-            success, msg = await services.change_password(user, dto)
-            # Session updates must also be wrapped
-            await sync_to_async(update_session_auth_hash)(request, user)
+            success, msg = services.change_password(user, dto)
+            if success:
+                update_session_auth_hash(request, user)
+                
+                if is_json_request(request): 
+                    return JsonResponse({'status': 'success', 'message': msg})
+                
+                messages.success(request, msg)
+                return redirect('password_change_done')
             
-            if is_json_request(request): return JsonResponse({'status': 'success'})
-            messages.success(request, msg)
-            return redirect('password_change_done')
-        except Exception as e:
-            messages.error(request, str(e))
-    return await sync_to_async(render)(request, 'tracker/password_change_form.html')
+            else:
+                raise ValueError(msg)
+        except ValueError as e:
+            if is_json_request(request): 
+                return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
+            messages.error(request, str(e))            
 
-async def delete_account_view(request):
-    # USE request.auser() FOR ASYNC SAFETY
-    user = await request.auser()
-    if not user.is_authenticated: return redirect('login')
+    if is_json_request(request):
+        return JsonResponse({
+            'status': 'ready', 
+            'required_fields': ['old_password', 'new_password', 'confirm_new_password']
+        })
+
+    return render(request, 'tracker/password_change_form.html')
+
+
+@require_http_methods(["GET", "POST", "DELETE"])
+def delete_account_view(request):
+    user = request.user
+    
+    if not user.is_authenticated:
+        if is_json_request(request): 
+            return JsonResponse({'status': 'error', 'message': 'Unauthorized'}, status=401)
+        return redirect('login')
 
     if request.method == 'POST':
         try:
             dto = schemas.DeleteAccountDTO(user_id=user.id, password=request.POST.get('password'))
-            await services.delete_account(dto)
-            await sync_to_async(logout)(request)
-            if is_json_request(request): return JsonResponse({'status': 'deleted'})
+            services.delete_account(dto)
+            logout(request)
+            
+            if is_json_request(request): 
+                return JsonResponse({'status': 'success', 'message': 'Account deleted'})
+            
             messages.info(request, "Account deleted.")
             return redirect('register')
+            
         except Exception as e:
+            if is_json_request(request): 
+                return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
             messages.error(request, str(e))
-    return await sync_to_async(render)(request, 'tracker/delete_account.html')
 
-async def update_location_view(request):
-    # USE request.auser() FOR ASYNC SAFETY
-    user = await request.auser()
-    if not user.is_authenticated:
-        return JsonResponse({'error': 'Unauthorized'}, status=401)
-    if request.method == 'POST':
-        try:
-            body = json.loads(request.body)
-            dto = schemas.UpdateLocationDTO(latitude=body.get('latitude'), longitude=body.get('longitude'))
-            success, msg = await services.update_user_location(user.id, dto)
-            return JsonResponse({'status': 'success', 'message': msg})
-        except Exception as e:
-            return JsonResponse({'error': str(e)}, status=400)
-    return JsonResponse({'error': 'Method not allowed'}, status=405)
+    if is_json_request(request):
+        return JsonResponse({
+            'status': 'warning', 
+            'message': 'Send POST with "password" to PERMANENTLY delete account.'
+        })
 
-async def logout_view(request):
-    await sync_to_async(logout)(request)
+    return render(request, 'tracker/delete_account.html')
+
+
+def logout_view(request):
+    logout(request)
     if is_json_request(request): return JsonResponse({'status': 'logged_out'})
     return redirect('login')
 
-async def cancel_registration(request):
-    uid = await sync_to_async(request.session.get)('unverified_user_id')
+
+def cancel_registration(request):
+    uid = request.session.get('unverified_user_id')
     if uid:
         try:
-            u = await User.objects.aget(id=uid)
-            if not u.is_active: await u.adelete()
-            await sync_to_async(request.session.pop)('unverified_user_id')
-        except: pass
+            u = User.objects.get(id=uid)
+            if not u.is_active: 
+                u.delete()
+            request.session.pop('unverified_user_id', None)
+        except User.DoesNotExist: 
+            pass
     return redirect('register')
 
-# ==========================================
-#  SECTION 2: SYNC BUSINESS LOGIC
-#  (Dashboard, Goals, Transactions)
-# ==========================================
+class CustomPasswordResetView(PasswordResetView):
+    def form_valid(self, form):
+        opts = {
+            'use_https': self.request.is_secure(),
+            'token_generator': self.token_generator,
+            'from_email': self.from_email,
+            'email_template_name': self.email_template_name,
+            'subject_template_name': self.subject_template_name,
+            'request': self.request,
+            'html_email_template_name': self.html_email_template_name,
+            'extra_email_context': self.extra_email_context,
+        }
+        form.save(**opts)
 
-@login_required(login_url='login')
+        if is_json_request(self.request):
+            return JsonResponse({
+                'status': 'success',
+                'message': 'Password reset instructions have been sent to your email.'
+            })
+
+        return super().form_valid(form)
+
+    def form_invalid(self, form):
+        if is_json_request(self.request):
+            return JsonResponse({
+                'status': 'error',
+                'errors': form.errors
+            }, status=400)
+            
+        return super().form_invalid(form)
+
+class CustomPasswordResetDoneView(auth_views.PasswordResetDoneView):
+    def get(self, request, *args, **kwargs):
+        if is_json_request(request):
+            return JsonResponse({
+                'status': 'success',
+                'message': 'Password reset instructions have been sent to your email.'
+            })
+        return super().get(request, *args, **kwargs)
+class CustomPasswordResetConfirmView(auth_views.PasswordResetConfirmView):
+    def _wants_json(self, request):
+        return is_json_request(request) or request.GET.get('format') == 'json'
+
+    def dispatch(self, request, *args, **kwargs):
+        if self._wants_json(request):
+            return password_reset_confirm_api(request, kwargs.get('uidb64'), kwargs.get('token'))
+
+        return super().dispatch(request, *args, **kwargs)
+
+    def get(self, request, *args, **kwargs):
+        if self._wants_json(request):
+            return password_reset_confirm_api(request, kwargs.get('uidb64'), kwargs.get('token'))
+
+        # The parent 'dispatch' method already checked the token and set self.validlink
+        response = super().get(request, *args, **kwargs)
+        return response
+
+    def post(self, request, *args, **kwargs):
+        if self._wants_json(request):
+            return password_reset_confirm_api(request, kwargs.get('uidb64'), kwargs.get('token'))
+
+        # 1. CHECK LINK VALIDITY FIRST
+        # self.validlink is set automatically by Django before this method runs
+        if not self.validlink:
+            if self._wants_json(request):
+                return JsonResponse({
+                    'status': 'error', 
+                    'message': 'The password reset link is invalid or has expired.'
+                }, status=400)
+        
+        # 2. Proceed with standard Django logic
+        # This will call get_form(), form_valid(), or form_invalid()
+        return super().post(request, *args, **kwargs)
+
+    def form_valid(self, form):
+        form.save()
+        if self._wants_json(self.request):
+            return JsonResponse({
+                'status': 'success', 
+                'message': 'Password has been reset successfully.'
+            })
+        return super().form_valid(form)
+
+    def form_invalid(self, form):
+        # This catches missing fields (like missing new_password1)
+        if self._wants_json(self.request):
+            return JsonResponse({
+                'status': 'error', 
+                'errors': form.errors
+            }, status=400)
+        return super().form_invalid(form)
+
+
+@require_http_methods(["GET", "POST"])
+def password_reset_confirm_api(request, uidb64, token):
+    try:
+        uid = force_str(urlsafe_base64_decode(uidb64))
+        user = get_user_model().objects.get(pk=uid)
+    except (TypeError, ValueError, OverflowError, User.DoesNotExist):
+        return JsonResponse({'status': 'error', 'message': 'Invalid user.'}, status=400)
+
+    if not PasswordResetTokenGenerator().check_token(user, token):
+        return JsonResponse({
+            'status': 'error',
+            'message': 'Password reset link is invalid or has expired.'
+        }, status=400)
+
+    if request.method == "GET":
+        return JsonResponse({
+            'status': 'success',
+            'message': 'Token is valid.',
+            'action': 'Submit POST with "new_password1" and "new_password2"'
+        })
+
+    data = request.POST
+    if not data:
+        try:
+            if request.body:
+                data = json.loads(request.body)
+        except json.JSONDecodeError:
+            data = {}
+
+    form = SetPasswordForm(user, data=data)
+    if form.is_valid():
+        form.save()
+        return JsonResponse({
+            'status': 'success',
+            'message': 'Password has been reset successfully.'
+        })
+
+    return JsonResponse({'status': 'error', 'errors': form.errors}, status=400)
+
+class CustomPasswordResetCompleteView(auth_views.PasswordResetCompleteView):
+    def get(self, request, *args, **kwargs):
+        if is_json_request(request):
+            return JsonResponse({
+                'status': 'success',
+                'message': 'Password reset complete. You may now log in.'
+            })
+        return super().get(request, *args, **kwargs)
+
+@require_GET
 def dashboard(request):
-    current_month = timezone.now().month
-    current_year = timezone.now().year
     user = request.user
+    if not user.is_authenticated:
+        if is_json_request(request): 
+            return JsonResponse({'status': 'error', 'message': 'Unauthorized'}, status=401)
+        return redirect('login')
+
+    now = timezone.now()
+    current_month = now.month
+    current_year = now.year
     
-    goals = BudgetGoal.objects.filter(
-        user=user, month=current_month, year=current_year
-    )
+    goals = BudgetGoal.objects.filter(user=user, month=current_month, year=current_year)
     
+
     expense_qs = Transaction.objects.filter(
-        user=user, type='Expense', date__month=current_month, date__year=current_year
+        user=user, 
+        type='Expense', 
+        date__month=current_month, 
+        date__year=current_year
     ).values('category').annotate(total=Sum('amount'))
-
+    
     expense_map = {i['category']: i['total'] for i in expense_qs}
-    goal_progress = []
 
+    goal_progress = []
     for goal in goals:
         spent = expense_map.get(goal.category, Decimal('0.00'))
-        target = float(goal.target_amount)
-        spent_amt = float(spent)
-        percent = (spent_amt / target) * 100 if target > 0 else 0
-        goal_progress.append({
-            'pk': goal.pk, 'category': goal.category.title(),
-            'target': target, 'spent': spent, 'percent': round(percent, 1),
-            'status': 'exceeded' if percent > 100 else ('warning' if percent >= 80 else 'ok')
-        })
+        target = goal.target_amount
+        
+        goal.spent = spent
+        goal.target = target 
+        
+        if target > 0:
+            goal.percent = min(int((spent / target) * 100), 100)
+            real_percent = (spent / target) * 100 
+        else:
+            goal.percent = 0
+            real_percent = 0
+
+        if real_percent > 100:
+            goal.status = 'exceeded'
+        elif real_percent >= 80:
+            goal.status = 'warning'
+        else:
+            goal.status = 'good'
+            
+        goal_progress.append(goal)
+
+    recent_transactions = Transaction.objects.filter(user=user).order_by('-date', '-id')[:5]
 
     all_transactions = Transaction.objects.filter(user=user)
     totals = all_transactions.aggregate(
         income=Sum('amount', filter=Q(type__iexact='Income')),
         expense=Sum('amount', filter=Q(type__iexact='Expense'))
     )
-    total_income = totals['income'] or Decimal('0.0')
-    total_expense = totals['expense'] or Decimal('0.0')
+    
+    total_income = totals['income'] or Decimal('0.00')
+    total_expense = totals['expense'] or Decimal('0.00')
     balance = total_income - total_expense
 
     if is_json_request(request):
+        json_goals = [{
+            'category': g.get_category_display(),
+            'target': float(g.target_amount),
+            'spent': float(g.spent),
+            'percent': g.percent,
+            'status': g.status
+        } for g in goal_progress]
+        
+        json_trans = list(recent_transactions.values('id', 'amount', 'type', 'category', 'date'))
+        
         return JsonResponse({
             'status': 'success',
             'data': {
-                'current_month': current_month, 'current_year': current_year,
-                'total_income': float(total_income), 'total_expense': float(total_expense),
-                'balance': float(balance), 'goal_progress': goal_progress,
-                'transactions': list(all_transactions.values('id', 'amount', 'type', 'category', 'date')[:5])
+                'current_month': current_month,
+                'total_income': float(total_income),
+                'total_expense': float(total_expense),
+                'balance': float(balance),
+                'goal_progress': json_goals,
+                'transactions': json_trans
             }
         })
-    return render(request, "tracker/dashboard.html", {
-        'current_month': current_month, 'current_year': current_year,
-        "total_income": total_income, "total_expense": total_expense, "balance": balance,
-        'goal_progress': goal_progress, "transactions": all_transactions[:5],
-    })
 
-@login_required(login_url='login')
+    context = {
+        'transactions': recent_transactions,
+        'goal_progress': goal_progress,
+        'total_income': total_income,
+        'total_expense': total_expense,
+        'balance': balance,
+        'current_month_name': now.strftime('%B'), 
+        'current_year': current_year,
+    }
+
+    return render(request, "tracker/dashboard.html", context)
+
+@require_GET
 def transaction_list(request):
     user = request.user
-    transaction_categories = Transaction.objects.filter(user=user).values_list('category', flat=True)
+    if not user.is_authenticated:
+        if is_json_request(request): 
+            return JsonResponse({'status': 'error', 'message': 'Unauthorized'}, status=401)
+        return redirect('login')
+    
     all_transactions = Transaction.objects.filter(user=user).order_by('-date', '-id')
 
+    query = request.GET.get('q') 
+    category_filter = request.GET.get('category')
     start_date = request.GET.get('start_date')
     end_date = request.GET.get('end_date')
+
+    if query:
+        all_transactions = all_transactions.filter(description__icontains=query)
+
+    if category_filter and category_filter != 'All':
+        all_transactions = all_transactions.filter(category=category_filter)
 
     if start_date:
         try:
@@ -333,11 +696,7 @@ def transaction_list(request):
             else:
                 all_transactions = all_transactions.filter(date=start_date_obj)
         except ValueError:
-            messages.warning(request, "Invalid date format.")
-
-    query = request.GET.get('q')
-    if query:
-        all_transactions = all_transactions.filter(Q(description__icontains=query) | Q(category__icontains=query))
+            pass
 
     paginator = Paginator(all_transactions, 20)
     page_number = request.GET.get('page')
@@ -348,83 +707,208 @@ def transaction_list(request):
     except EmptyPage:
         transactions_page = paginator.page(paginator.num_pages)
 
-    total_income = all_transactions.filter(type='Income').aggregate(Sum('amount'))['amount__sum'] or 0
-    total_expense = all_transactions.filter(type='Expense').aggregate(Sum('amount'))['amount__sum'] or 0   
+    income_agg = all_transactions.filter(type='Income').aggregate(Sum('amount'))
+    expense_agg = all_transactions.filter(type='Expense').aggregate(Sum('amount'))
+    total_income = income_agg['amount__sum'] or 0
+    total_expense = expense_agg['amount__sum'] or 0
 
     if is_json_request(request):
-        return JsonResponse({'status': 'success', 'data': list(transactions_page.object_list.values())})
+        transactions_data = list(transactions_page.object_list.values(
+            'id', 'date', 'description', 'amount', 'category', 'type'
+        ))
+        
+        return JsonResponse({
+            'status': 'success',
+            'data': {
+                'transactions': transactions_data,
+                'pagination': {
+                    'current_page': transactions_page.number,
+                    'total_pages': paginator.num_pages,
+                    'has_next': transactions_page.has_next(),
+                    'has_previous': transactions_page.has_previous(),
+                    'total_count': paginator.count
+                },
+                'totals': {
+                    'income': float(total_income),
+                    'expense': float(total_expense),
+                    'balance': float(total_income - total_expense)
+                },
+                'filters': {
+                    'query': query,
+                    'category': category_filter,
+                    'start_date': start_date,
+                    'end_date': end_date
+                }
+            }
+        })
+    categories = Transaction.CATEGORY_CHOICES
 
-    MASTER_TRANSACTION_CATEGORIES = [choice[0] for choice in Transaction._meta.get_field('category').choices]
-    
     return render(request, 'tracker/transaction_list.html', {
         'transactions': transactions_page,
-        'categories': MASTER_TRANSACTION_CATEGORIES,
-        'current_query': query,
+        'categories': categories,      
+        'current_category': category_filter, 
+        'current_query': query,        
+        'current_start_date': start_date, 
+        'current_end_date': end_date,   
         'total_income_period': total_income,
         'total_expense_period': total_expense,
         'total_balance_period': total_income - total_expense
     })
 
-@login_required(login_url='login')
+from . import schemas, services
+
+@require_http_methods(["GET", "POST"])
 def add_transaction(request):
     user = request.user
-    if request.method == 'POST':
+    if not user.is_authenticated:
+        if is_json_request(request): return JsonResponse({'status': 'error', 'message': 'Unauthorized'}, status=401)
+        return redirect('login')
+
+    if request.method == 'GET':
+        if is_json_request(request): 
+            return JsonResponse({'status': 'ready', 'required_fields': ['amount', 'type', 'category', 'date']})
+        return render(request, 'tracker/add_transaction.html', {'form': TransactionForm()})
+
+    if 'receipt_image' in request.FILES and 'amount' not in request.POST:
+        ai_data = scan_receipt(request.FILES['receipt_image'])
+        if ai_data:
+            form = TransactionForm(initial=ai_data)
+            messages.success(request, "Receipt scanned! Please review details.")
+        else:
+            form = TransactionForm()
+            messages.error(request, "Could not read receipt.")
+        return render(request, 'tracker/add_transaction.html', {'form': form})
+
+    form = TransactionForm(request.POST, request.FILES)
+    if form.is_valid():
         try:
-            amount = Decimal(request.POST.get('amount'))
-            Transaction.objects.create(
-                user=user,
-                type=request.POST.get('type'),
-                amount=amount,
-                category=request.POST.get('category'),
-                description=request.POST.get('description'),
-                date=request.POST.get('date')
+            dto = schemas.TransactionDTO(
+                user_id=user.id,
+                amount=form.cleaned_data['amount'],
+                transaction_type=form.cleaned_data['type'],
+                category=form.cleaned_data['category'],
+                date=form.cleaned_data['date'],
+                description=form.cleaned_data.get('description', ''),
             )
-            if is_json_request(request): return JsonResponse({'status': 'success', 'message': 'Transaction added'}, status=201)
+            
+            services.create_transaction(dto)
+
+            if is_json_request(request): 
+                return JsonResponse({'status': 'success', 'message': 'Transaction added'}, status=201)
+            
             messages.success(request, "Transaction added successfully!")
             return redirect('transactions')
-        except Exception as e:
-            if is_json_request(request): return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
-            messages.error(request, f"Failed to add: {e}")
-            return redirect('add_transaction')
-            
-    return render(request, 'tracker/add_transaction.html', {'categories': Transaction.CATEGORY_CHOICES})
 
-@login_required(login_url='login')
+        except Exception as e:
+             if is_json_request(request): return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
+             messages.error(request, f"Error: {e}")
+
+    if is_json_request(request): 
+        return JsonResponse({'status': 'error', 'errors': form.errors}, status=400)
+    
+    messages.error(request, "Please correct the errors below.")
+    return render(request, 'tracker/add_transaction.html', {'form': form})
+
+
+@require_http_methods(["GET", "POST"])
 def edit_transaction(request, pk):
-    transaction = get_object_or_404(Transaction, pk=pk, user=request.user)
-    if request.method == "POST":
-        try:
-            transaction.amount = Decimal(request.POST.get("amount", 0))
-            transaction.type = request.POST.get("type")
-            transaction.category = request.POST.get("category")
-            transaction.date = request.POST.get("date")
-            transaction.description = request.POST.get("description")
-            transaction.save()
-            if is_json_request(request): return JsonResponse({'status': 'success'})
-            messages.success(request, 'Transaction updated.')
-            return redirect("transactions")
-        except Exception as e:
-            if is_json_request(request): return JsonResponse({'error': str(e)}, status=400)
-            messages.error(request, str(e))
-    return render(request, "tracker/editTransaction.html", {"transaction": transaction})
+    user = request.user
+    if not user.is_authenticated:
+        if is_json_request(request): return JsonResponse({'status': 'error', 'message': 'Unauthorized'}, status=401)
+        return redirect('login')
 
-@login_required(login_url='login')
-def delete_transaction(request, pk):
-    transaction = Transaction.objects.filter(pk=pk, user=request.user).first()
-    if not transaction:
-        if is_json_request(request): return JsonResponse({'error': 'Not Found'}, status=404)
+    try:
+        transaction = Transaction.objects.get(pk=pk, user=user)
+    except Transaction.DoesNotExist:
+        if is_json_request(request): return JsonResponse({'error': 'Not found'}, status=404)
         return render(request, '404.html', status=404)
 
+    if request.method == "POST":
+        form = TransactionForm(request.POST, instance=transaction)
+        if form.is_valid():
+            dto = schemas.TransactionDTO(
+                user_id=user.id,
+                amount=form.cleaned_data['amount'],
+                transaction_type=form.cleaned_data['type'],
+                category=form.cleaned_data['category'],
+                date=form.cleaned_data['date'],
+                description=form.cleaned_data.get('description', '')
+            )
+            
+            services.update_transaction(pk, dto)
+            
+            if is_json_request(request): return JsonResponse({'status': 'success', 'message': 'Updated'})
+            messages.success(request, 'Transaction updated.')
+            return redirect("transactions")
+        
+        else:
+            if is_json_request(request): return JsonResponse({'status': 'error', 'errors': form.errors}, status=400)
+            messages.error(request, "Please correct errors.")
+
+    else:
+        form = TransactionForm(instance=transaction)
+
+    return render(request, "tracker/editTransaction.html", {"form": form, "transaction": transaction})
+
+
+@require_http_methods(["GET", "POST", "DELETE"])
+def delete_transaction(request, pk):
+    user = request.user
+    if not user.is_authenticated:
+        if is_json_request(request): return JsonResponse({'status': 'error', 'message': 'Unauthorized'}, status=401)
+        return redirect('login')
+    
     if request.method in ["DELETE", "POST"]:
-        transaction.delete()
-        if is_json_request(request): return JsonResponse({'status': 'success', 'message': 'Deleted'})
-        messages.success(request, 'Transaction deleted.')
-        return redirect('transactions')
+        try:
+            services.delete_transaction(pk, user.id)
+            if is_json_request(request): return JsonResponse({'status': 'success', 'message': 'Deleted'})
+            messages.success(request, 'Transaction deleted.')
+            return redirect('transactions')
+        except Exception:
+            if is_json_request(request): return JsonResponse({'error': 'Not found'}, status=404)
+            return render(request, '404.html', status=404)
+
+    try:
+        transaction = Transaction.objects.get(pk=pk, user=user)
+    except Transaction.DoesNotExist:
+         return render(request, '404.html', status=404)
+
+    if is_json_request(request):
+        return JsonResponse({'status': 'warning', 'message': 'Send DELETE/POST to confirm.'})
+        
     return render(request, 'tracker/delete_confirm.html', {'transaction': transaction})
 
-@login_required(login_url='login')
+def validate_file_extension(filename):
+    if not filename.endswith(('.xlsx', '.csv')):
+        raise ValueError("Invalid file type. Only .xlsx and .csv allowed.")
+    
+@login_required
+@require_http_methods(["GET", "POST"])
+def subscription_audit_view(request):
+    audit_results = None
+    user = request.user
+    if not user.is_authenticated:
+        if is_json_request(request): return JsonResponse({'status': 'error', 'message': 'Unauthorized'}, status=401)
+        return redirect('login')
+    if request.method == "POST":
+        raw_data = request.POST.get('transactions')
+        if raw_data:
+            if len(raw_data) > 50000: 
+                return JsonResponse({'error': 'Payload too large'}, status=413)
+            audit_results = audit_subscriptions(raw_data)
+            if is_json_request(request):
+                return JsonResponse({'status': 'success', 'data': audit_results})    
+    return render(request, 'tracker/audit.html', {'results': audit_results})
+
+@require_GET
 def charts(request):
-    transactions = Transaction.objects.filter(user=request.user)
+    user = request.user
+    if not user.is_authenticated:
+        if is_json_request(request): return JsonResponse({'status': 'error', 'message': 'Unauthorized'}, status=401)
+        return redirect('login')
+
+    transactions = list(Transaction.objects.filter(user=user))
+    
     total_income = 0.0
     total_expense = 0.0
     category_totals = defaultdict(float)
@@ -447,192 +931,431 @@ def charts(request):
     if is_json_request(request): return JsonResponse({'status': 'success', 'data': context})
     return render(request, "tracker/charts.html", context)
 
-@login_required(login_url='login')
+@login_required
+@require_POST
+def import_transactions(request):
+    try:
+        if 'file' not in request.FILES:
+             raise ValueError("No file uploaded.")
+
+        # 1. DTO handles validation (Size, Extension)
+        dto = schemas.ImportTransactionsDTO(
+            user_id=request.user.id,
+            file=request.FILES['file']
+        )
+        
+        # 2. Service handles parsing & database
+        count = services.import_transactions_service(dto)
+        
+        if count > 0:
+            messages.success(request, f"Imported {count} transactions.")
+        else:
+            messages.error(request, "No transactions found in file.")
+
+    except ValueError as e:
+        messages.error(request, str(e))
+    except Exception as e:
+        messages.error(request, "An error occurred during import.")
+        
+    return redirect('transactions')
+        
+@require_GET
 def goals_list(request, year=None, month=None):
     user = request.user
-    now = timezone.now()
-    categories = Transaction.CATEGORY_CHOICES
-    view_month = int(month or request.GET.get('month') or now.month)
-    view_year = int(year or request.GET.get('year') or now.year)
+    if not user.is_authenticated:
+        if is_json_request(request): 
+            return JsonResponse({'status': 'error', 'message': 'Unauthorized'}, status=401)
+        return redirect('login')
 
-    current_goals = BudgetGoal.objects.filter(user=user, year=view_year, month=view_month).order_by('category')
+    now = timezone.now()
+    
+    form = BudgetGoalForm(user=user) 
+    
+    try:
+        view_month = int(month or request.GET.get('month') or now.month)
+        view_year = int(year or request.GET.get('year') or now.year)
+    except ValueError:
+        view_month = now.month
+        view_year = now.year
+
+    current_goals = list(
+        BudgetGoal.objects.filter(user=user, year=view_year, month=view_month).order_by('category')
+    )
     
     is_history = (view_year < now.year) or (view_year == now.year and view_month < now.month)
-    can_import = not is_history and not current_goals.exists()
+    can_import = not is_history and not current_goals
 
-    expense_totals = Transaction.objects.filter(
-        user=user, type='Expense', date__year=view_year, date__month=view_month
-    ).values('category').annotate(total=Sum('amount'))
+
+    expense_totals = list(
+        Transaction.objects.filter(
+            user=user, 
+            type='Expense', 
+            date__year=view_year, 
+            date__month=view_month
+        ).values('category').annotate(total=Sum('amount'))
+    )
     
     expense_map = {item['category']: item['total'] for item in expense_totals}
 
     goals_data = []
     for goal in current_goals:
         spent = expense_map.get(goal.category, Decimal('0.00'))
+        
         goal.actual_spent = spent
         goal.remaining = goal.target_amount - spent
+        
         if goal.target_amount > 0:
             goal.progress_percent = min((float(spent) / float(goal.target_amount)) * 100, 100)
         else:
             goal.progress_percent = 0
-        
+            
         goal.is_over_budget = goal.remaining < 0
         
         goals_data.append({
-            'id': goal.id, 'category': goal.category, 'target': float(goal.target_amount),
-            'spent': float(spent), 'remaining': float(goal.remaining)
+            'id': goal.id, 
+            'category': goal.get_category_display(),
+            'target': float(goal.target_amount),
+            'spent': float(spent), 
+            'remaining': float(goal.remaining)
         })
 
     if is_json_request(request):
         return JsonResponse({'status': 'success', 'data': goals_data})
 
     return render(request, 'tracker/goals_list.html', {
-        'goals': current_goals, 'categories': categories,
+        'goals': current_goals, 
+        'form': form,
         'view_month': datetime(view_year, view_month, 1), 
         'view_year': view_year,
         'months_choices': [(i, datetime(2000, i, 1).strftime('%B')) for i in range(1, 13)],
         'year_choices': [now.year, now.year-1, now.year-2],
-        'is_history': is_history, 'can_import': can_import,
+        'is_history': is_history, 
+        'can_import': can_import,
     })
 
-@login_required(login_url='login')
+@require_POST
 def set_goals(request):
     user = request.user
-    if request.method == 'POST':
-        category = request.POST.get('category')
-        try:
-            target = Decimal(request.POST.get('target_amount'))
-            BudgetGoal.objects.update_or_create(
-                user=user, category=category, month=timezone.now().month, year=timezone.now().year,
-                defaults={'target_amount': target}
-            )
-            BudgetLock.objects.filter(user=user, month=timezone.now().month, year=timezone.now().year).delete()
+    if not user.is_authenticated:
+        if is_json_request(request): return JsonResponse({'status': 'error', 'message': 'Unauthorized'}, status=401)
+        return redirect('login')
 
-            if is_json_request(request): return JsonResponse({'status': 'success'})
-            messages.success(request, f'Goal set for {category}.')
-        except Exception as e:
-            if is_json_request(request): return JsonResponse({'error': str(e)}, status=400)
-            messages.error(request, str(e))
-    return redirect('goals_list')
+    try:
+        dto = schemas.SetGoalDTO(
+            user_id=user.id,
+            category=request.POST.get('category'),
+            target_amount=request.POST.get('target_amount'),
+            month=request.POST.get('month'),
+            year=request.POST.get('year')
+        )
 
-@login_required(login_url='login')
+        goal = services.set_budget_goal(dto)
+
+        if is_json_request(request): 
+            return JsonResponse({
+                'status': 'success', 
+                'message': f'Goal set for {dto.month}/{dto.year}',
+                'data': {
+                    'category': goal.category,
+                    'target': float(goal.target_amount),
+                    'month': goal.month,
+                    'year': goal.year
+                }
+            })
+        
+        messages.success(request, f"Goal set for {dto.month}/{dto.year}.")
+        return redirect(f'/goals/?month={dto.month}&year={dto.year}')
+
+    except ValueError as e:
+        if is_json_request(request): 
+            return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
+        messages.error(request, str(e))
+        return redirect('goals_list')
+
+@require_http_methods(["GET", "POST"])
 def edit_goal(request, pk):
-    goal = get_object_or_404(BudgetGoal, pk=pk, user=request.user)
+    user = request.user
+    if not user.is_authenticated:
+        if is_json_request(request): return JsonResponse({'status': 'error', 'message': 'Unauthorized'}, status=401)
+        return redirect('login')
+
+    try:
+        goal = BudgetGoal.objects.get(pk=pk, user=user)
+    except BudgetGoal.DoesNotExist:
+        return render(request, '404.html', status=404)
+
     if request.method == 'POST':
-        form = BudgetGoalForm(request.POST, instance=goal, user=request.user)
+        form = BudgetGoalForm(request.POST, instance=goal)
         if form.is_valid():
-            form.save()
+            dto = schemas.UpdateGoalDTO(
+                user_id=user.id,
+                goal_id=pk,
+                category=form.cleaned_data['category'],
+                target_amount=form.cleaned_data['target_amount']
+            )
+            services.update_goal(dto)
+            
             if is_json_request(request): return JsonResponse({'status': 'success'})
             messages.success(request, "Goal updated.")
             return redirect('goals_list')
-        elif is_json_request(request): return JsonResponse({'errors': form.errors}, status=400)
     else:
-        form = BudgetGoalForm(instance=goal, user=request.user)
+        form = BudgetGoalForm(instance=goal)
+
     return render(request, 'tracker/edit_goal.html', {'form': form, 'goal': goal})
 
-@login_required(login_url='login')
+@require_http_methods(["GET", "POST", "DELETE"])
 def delete_goal(request, pk):
-    goal = get_object_or_404(BudgetGoal, pk=pk, user=request.user)
+    user = request.user
+    if not user.is_authenticated:
+        if is_json_request(request): return JsonResponse({'status': 'error', 'message': 'Unauthorized'}, status=401)
+        return redirect('login')
+
+    try:
+        goal = BudgetGoal.objects.get(pk=pk, user=user)
+    except BudgetGoal.DoesNotExist:
+        if is_json_request(request): return JsonResponse({'error': 'Goal not found'}, status=404)
+        return render(request, '404.html', status=404)
+
     if request.method in ["POST", "DELETE"]:
         goal.delete()
+        
         if is_json_request(request): return JsonResponse({'status': 'deleted'})
         messages.success(request, "Goal deleted.")
         return redirect('goals_list')
+
+    if is_json_request(request):
+        return JsonResponse({'status': 'warning', 'message': 'Send DELETE/POST to confirm.'})
+
     return render(request, 'tracker/delete_goal.html', {'goal': goal})
 
-@login_required(login_url='login')
+
+@require_POST
 def clear_monthly_goals(request, year, month):
+    user = request.user
+    if not user.is_authenticated:
+        if is_json_request(request): return JsonResponse({'status': 'error', 'message': 'Unauthorized'}, status=401)
+        return redirect('login')
+
     now = timezone.now()
+    year = int(year)
+    month = int(month)
+
     if year < now.year or (year == now.year and month < now.month):
-        return JsonResponse({'status': 'error', 'message': 'Cannot clear past goals.'}, status=403)
+        if is_json_request(request): return JsonResponse({'status': 'error', 'message': 'Cannot clear past goals.'}, status=403)
+        messages.warning(request, "Cannot clear past goals.")
+        return redirect(reverse('goals_list') + f"?year={year}&month={month}")
     
-    count, _ = BudgetGoal.objects.filter(user=request.user, year=year, month=month).delete()
-    BudgetLock.objects.get_or_create(user=request.user, year=year, month=month) 
+    count, _ = BudgetGoal.objects.filter(user=user, year=year, month=month).delete()
+    
+    BudgetLock.objects.get_or_create(user=user, year=year, month=month)
 
     if is_json_request(request): return JsonResponse({'status': 'success', 'deleted': count})
     messages.warning(request, f"Cleared {count} goals.")
     return redirect(reverse('goals_list') + f"?year={year}&month={month}")
 
-@login_required(login_url='login')
+@require_POST
 def import_previous_goals(request):
     user = request.user
-    view_month = int(request.GET.get('month', timezone.now().month))
-    view_year = int(request.GET.get('year', timezone.now().year))
+    if not user.is_authenticated:
+        if is_json_request(request): return JsonResponse({'status': 'error', 'message': 'Unauthorized'}, status=401)
+        return redirect('login')
 
-    latest_record = BudgetGoal.objects.filter(user=user).exclude(month=view_month, year=view_year).order_by('-year', '-month').first()
+    try:
+        month = int(request.POST.get('month') or timezone.now().month)
+        year = int(request.POST.get('year') or timezone.now().year)
 
-    if latest_record:
-        template_goals = BudgetGoal.objects.filter(user=user, month=latest_record.month, year=latest_record.year)
-        BudgetGoal.objects.filter(user=user, month=view_month, year=view_year).delete()
-        new_goals = [
-            BudgetGoal(user=user, category=g.category, target_amount=g.target_amount, month=view_month, year=view_year)
-            for g in template_goals
-        ]
-        BudgetGoal.objects.bulk_create(new_goals)
-        BudgetLock.objects.filter(user=user, month=view_month, year=view_year).delete()
-
-        if is_json_request(request): return JsonResponse({'status': 'success'})
-        messages.success(request, "Goals imported.")
-    else:
-        messages.warning(request, "No previous goals found.")
-
-    return redirect(reverse('goals_list') + f"?year={view_year}&month={view_month}")
-
-@login_required(login_url='login')
-def change_currency(request):
-    if request.method == 'POST':
-        currency_code = request.POST.get('currency_code')
-        try:
-            profile = request.user.userprofile
-            profile.currency_code = currency_code
-            profile.save()
-            messages.success(request, f"Currency changed to {currency_code}")
-        except:
-            UserProfile.objects.create(user=request.user, currency_code=currency_code)
+        dto = schemas.ImportGoalsDTO(
+            user_id=user.id,
+            target_month=month,
+            target_year=year
+        )
         
-        if is_json_request(request): return JsonResponse({'status': 'success', 'currency': currency_code})
+        services.import_previous_goals(dto)
+        
+        messages.success(request, "Goals imported successfully.")
+        
+    except (ValueError, services.ServiceError) as e:
+        messages.warning(request, str(e))
+
+    return redirect(f'/goals/?year={year}&month={month}')
+
+@require_POST
+def change_currency(request):
+    user = request.user
+    if not user.is_authenticated:
+        if is_json_request(request): return JsonResponse({'status': 'error', 'message': 'Unauthorized'}, status=401)
+        return redirect('login')
+
+    try:
+        dto = schemas.UpdateCurrencyDTO(
+            user_id=user.id,
+            currency_code=request.POST.get('currency_code', '')
+        )
+        services.update_currency(dto)
+
+        if is_json_request(request):
+            return JsonResponse({
+                'status': 'success',
+                'message': 'Currency updated.',
+                'currency': dto.currency_code
+            })
+
+        messages.success(request, f"Currency changed to {dto.currency_code}")
+        
+    except ValueError as e:
+        if is_json_request(request):
+            return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
+        messages.error(request, str(e))
+        
     return redirect(request.META.get('HTTP_REFERER', 'dashboard'))
 
-@login_required(login_url='login')
-def profile_settings(request):
-    if request.method == 'POST':
-        if 'request_email_change' in request.POST:
-            try:
-                dto = schemas.EmailChangeRequestDTO(user_id=request.user.id, new_email=request.POST.get('email'))
-                # Redirect to async verify
-                return redirect('verify_email_change') 
-            except Exception as e:
-                messages.error(request, str(e))
-        else:
-            form = ProfileUpdateForm(request.POST, instance=request.user)
-            if form.is_valid():
-                form.save()
-                if is_json_request(request): return JsonResponse({'status': 'updated'})
-                messages.success(request, 'Profile updated.')
-    else:
-        form = ProfileUpdateForm(instance=request.user)
 
-    return render(request, 'tracker/profile_settings.html', {'form': form, 'profile': request.user.userprofile})
+@require_POST
+def resend_verification_code_profile(request):
+    user = request.user
+    if not user.is_authenticated:
+        if is_json_request(request): return JsonResponse({'status': 'error', 'message': 'Unauthorized'}, status=401)
+        return redirect('login')
 
-@login_required
-def resend_verification_code(request):
-    profile = request.user.userprofile
-    if not profile.pending_email or not profile.email_verification_code:
-        messages.error(request, "No pending email change found.")
-        return redirect('profile')
+    cache_key = f"email_change_resend_cooldown_{user.id}"
+    if cache.get(cache_key):
+        msg = "Please wait a minute before requesting another code."
+        if is_json_request(request):
+            return JsonResponse({'status': 'error', 'message': msg}, status=429)
+        messages.warning(request, msg)
+        return redirect('verify_email_change')
 
-    html_content = f"""
-        <p>You requested to change your email address.</p>
-        <p>Your verification code is: <strong>{profile.email_verification_code}</strong></p>
-    """
-    send_email_task.delay(profile.pending_email, "Verify Your New Email", html_content)
-    messages.success(request, f"Code resent to {profile.pending_email}")
+    try:
+        success, result = services.resend_email_change_code(user.id)
+
+        if not success:
+            if is_json_request(request): return JsonResponse({'status': 'error', 'message': result}, status=429)
+            messages.warning(request, result)
+            return redirect('verify_email_change')
+
+        raw_code, email_to = result
+
+        html_content = f"""
+            <p>You requested a new verification code.</p>
+            <p>Your code is: <strong>{raw_code}</strong></p>
+        """
+        send_email_task.delay(email_to, "Your New Code", html_content)
+
+        cache.set(cache_key, True, 60)
+
+        if is_json_request(request): return JsonResponse({'status': 'success', 'message': 'Code resent'})
+        messages.success(request, f"New code sent to {email_to}")
+        
+    except UserProfile.DoesNotExist:
+        messages.error(request, "Profile not found.")
+        
     return redirect('verify_email_change')
 
-# ==========================================
-#  ERROR HANDLERS
-# ==========================================
+@require_http_methods(["GET", "POST"])
+def profile_settings(request):
+    user = request.user
+
+    if not user.is_authenticated:
+        if is_json_request(request): 
+            return JsonResponse({'status': 'error', 'message': 'Unauthorized'}, status=401)
+        return redirect('login')
+
+    form = ProfileUpdateForm(instance=user)
+
+    if request.method == 'POST':
+        if 'request_email_change' in request.POST:
+            cache_key = f"email_init_cooldown_{user.id}"
+            if cache.get(cache_key):
+                msg = "Please wait a minute before requesting another code."
+                if is_json_request(request): return JsonResponse({'status': 'error', 'message': msg}, status=429)
+                messages.warning(request, msg)
+                return redirect('profile')
+            try:
+                dto = schemas.EmailChangeRequestDTO(
+                    user_id=user.id, 
+                    new_email=request.POST.get('email'),
+                    current_email=user.email
+                )
+
+                raw_code = services.request_email_change(dto)
+
+                send_email_task.delay(
+                    dto.new_email, 
+                    "Email Change Verification", 
+                    f"Your verification code is: {raw_code}"
+                )
+
+                cache.set(cache_key, True, 60)
+
+                if is_json_request(request):
+                    return JsonResponse({
+                        'status': 'success', 
+                        'message': 'Verification code sent.',
+                        'next_step': 'Verify at /verify-email-change/'
+                    })
+                return redirect('verify_email_change')
+
+            except Exception as e:
+                if is_json_request(request):
+                    return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
+                messages.error(request, str(e))
+
+        else:
+
+            post_data = request.POST.copy()
+
+            post_data['email'] = user.email
+
+            form = ProfileUpdateForm(post_data, instance=user)
+            
+            if form.is_valid():
+                form.save()
+                
+                if is_json_request(request): 
+                    user_profile = user.userprofile
+                    return JsonResponse({
+                        'status': 'updated',
+                        'data': {
+                            'username': user.username,
+                            'first_name': user.first_name,
+                            'last_name': user.last_name,
+                            'email': user.email, 
+                            'currency': user_profile.currency_code
+                        }
+                    })
+                
+                messages.success(request, 'Profile updated.')
+            else:
+                if is_json_request(request):
+                    return JsonResponse({'status': 'error', 'errors': form.errors}, status=400)
+
+    else:
+        if is_json_request(request):
+            user_profile = user.userprofile
+            data = {
+                'username': user.username,
+                'first_name': user.first_name,
+                'last_name': user.last_name,
+                'email': user.email,
+                'currency': user_profile.currency_code
+            }
+            return JsonResponse({'status': 'success', 'data': data})
+
+    return render(request, 'tracker/profile_settings.html', {
+        'form': form, 
+        'profile': user.userprofile
+    })
+
+
+
+@require_GET
 def password_change_done_custom(request):
+    if is_json_request(request):
+        return JsonResponse({
+            'status': 'success', 
+            'message': 'Password changed successfully.'
+        })
+
     return render(request, 'tracker/password_change_done.html')
 
 def custom_403_handler(request, exception=None):

@@ -1,23 +1,36 @@
-# Use Python 3.11 (Slim version is faster/smaller)
+# Use Python 3.11
 FROM python:3.11-slim
 
-# Prevent Python from writing temporary files to disk
+# Keep Python from generating .pyc files in the container
 ENV PYTHONDONTWRITEBYTECODE 1
 ENV PYTHONUNBUFFERED 1
 
-# Create a folder inside the container
+# Set work directory
 WORKDIR /app
 
-# Install system tools needed for some Python packages
+# Install system dependencies
+# Added 'dos2unix' to fix Windows line-ending issues in scripts
 RUN apt-get update && apt-get install -y \
     gcc \
     libpq-dev \
+    dos2unix \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy your requirements and install them
+# Install Python dependencies
 COPY requirements.txt /app/
 RUN pip install --upgrade pip
-RUN pip install -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy your entire project code into the container
+# Copy project
 COPY . /app/
+
+# --- CRITICAL FIXES FOR DEPLOYMENT ---
+
+# 1. Fix line endings (If you created run.sh on Windows, this prevents a crash)
+RUN dos2unix run.sh
+
+# 2. Make the script executable
+RUN chmod +x run.sh
+
+# 3. The Command: Execute your startup script
+CMD ["./run.sh"]

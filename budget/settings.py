@@ -10,12 +10,13 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
-from pathlib import Path
 import os
-from dotenv import load_dotenv
+from pathlib import Path
 import dj_database_url
+from dotenv import load_dotenv
 
 load_dotenv()
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -24,28 +25,35 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = os.getenv('SECRET_KEY')
+SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-dev-key-fallback')
 
-raw_hosts = os.getenv('ALLOWED_HOSTS')
-if raw_hosts:
-    ALLOWED_HOSTS = raw_hosts.split(',')
-else:
-    ALLOWED_HOSTS = []    
+# SECURITY WARNING: don't run with debug turned on in production!
+DEBUG = os.getenv('DEBUG') == 'True'
 
-ALLOWED_HOSTS = ['127.0.0.1', 'localhost']
+ALLOWED_HOSTS = ['127.0.0.1', 'localhost', '0.0.0.0']
 
-render_host = os.environ.get('RENDER_EXTERNAL_HOSTNAME')
+# Add Render host if it exists in the environment
+render_host = os.getenv('RENDER_EXTERNAL_HOSTNAME')
 if render_host:
     ALLOWED_HOSTS.append(render_host)
 
-CSRF_TRUSTED_ORIGINS = [f"https://{render_host}"] if render_host else []
+# CSRF Trusted Origins (Critical for Render forms)
+CSRF_TRUSTED_ORIGINS = ['http://localhost:8000', 'http://127.0.0.1:8000']
+if render_host:
+    CSRF_TRUSTED_ORIGINS.append(f"https://{render_host}")
 
-# SECURITY WARNING: don't run with debug turned on in production!
+# Security Headers for Production
+if not DEBUG:
+    SECURE_SSL_REDIRECT = True
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    SECURE_HSTS_SECONDS = 31536000  # 1 year
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = True
+    SECURE_BROWSER_XSS_FILTER = True
+    SECURE_CONTENT_TYPE_NOSNIFF = True
+    X_FRAME_OPTIONS = 'DENY'
 
-DEBUG = False
-
-
-# Application definition
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -54,27 +62,28 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'widget_tweaks',
+    'django.contrib.humanize',
     'tracker',
-]
+    ]
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
-    'whitenoise.middleware.WhiteNoiseMiddleware',
 ]
-
 
 ROOT_URLCONF = 'budget.urls'
 
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [],
+        'DIRS': [BASE_DIR / 'templates'],
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
@@ -92,27 +101,42 @@ WSGI_APPLICATION = 'budget.wsgi.application'
 
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
-
-
 DATABASES = {
     'default': dj_database_url.config(
-        default=os.getenv('DATABASE_URL'),
+        default=os.getenv('DATABASE_URL', 'sqlite:///db.sqlite3'),
         conn_max_age=600,
         conn_health_checks=True,
-        ssl_require=(not DEBUG)
+        
+        # Only require SSL if DEBUG is False (Online)
+        ssl_require=(not DEBUG) 
     )
 }
 
+DATABASES['default']['ATOMIC_REQUESTS'] = False
 
-EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-EMAIL_HOST = 'smtp.resend.com'
-EMAIL_PORT = 587
-EMAIL_USE_TLS = True
-EMAIL_HOST_USER = 'resend'
-EMAIL_HOST_PASSWORD = os.getenv('RESEND_API_KEY') 
-DEFAULT_FROM_EMAIL = 'onboarding@resend.dev' # Change this once you verify your domain
 
-# --- STANDARD DJANGO SETTINGS ---
+if DEBUG:
+    # DEVELOPMENT (LOCAL) SETTINGS: GMAIL
+    EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+    EMAIL_HOST = 'smtp.gmail.com'
+    EMAIL_PORT = 587
+    EMAIL_USE_TLS = True
+    EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER')
+    EMAIL_HOST_PASSWORD = os.environ.get('GMAIL_APP_PASSWORD')
+    DEFAULT_FROM_EMAIL = f"BudgetApp Support <{os.environ.get('EMAIL_HOST_USER')}>"
+
+else:
+    # PRODUCTION (ONLINE) SETTINGS: RESEND
+    EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+    #EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
+    EMAIL_HOST = 'smtp.resend.com'
+    EMAIL_PORT = 587
+    EMAIL_USE_TLS = True
+    EMAIL_HOST_USER = 'resend'
+    EMAIL_HOST_PASSWORD = os.environ.get('RESEND_API_KEY')
+    DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL') # Or your verified domain
+
+
 AUTH_PASSWORD_VALIDATORS = [
     {
         'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',
@@ -129,19 +153,32 @@ AUTH_PASSWORD_VALIDATORS = [
     },
 ]
 
+
+# Internationalization
+# https://docs.djangoproject.com/en/5.2/topics/i18n/
+
 LANGUAGE_CODE = 'en-us'
+
 TIME_ZONE = 'Africa/Lagos'
+
 USE_I18N = True
+
 USE_TZ = True
 
-# --- STATIC FILES ---
+
+# Static files (CSS, JavaScript, Images)
+# https://docs.djangoproject.com/en/5.2/howto/static-files/
+
 STATIC_URL = '/static/'
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
+# Default primary key field type
+# https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
+
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-# --- CURRENCY SETTINGS ---
+
 CUSTOM_CURRENCY_SYMBOL = '₦'
 AVAILABLE_CURRENCIES = {
     'NGN': '₦',
@@ -150,45 +187,43 @@ AVAILABLE_CURRENCIES = {
     'GBP': '£',
 }
 
-redis_url = os.getenv('REDIS_URL', 'redis://127.0.0.1:6379/0')
 
-# 2. Fix for Celery: rediss:// URLs MUST have ssl_cert_reqs defined
-if redis_url.startswith('rediss://'):
-    # This appends the required SSL parameter for Upstash/Cloud Redis
-    CELERY_BROKER_URL = f"{redis_url}?ssl_cert_reqs=none"
-    CELERY_RESULT_BACKEND = f"{redis_url}?ssl_cert_reqs=none"
+REDIS_URL = os.getenv('REDIS_URL', 'redis://127.0.0.1:6379/0')
+
+# Fix for Celery: rediss:// URLs MUST have ssl_cert_reqs defined
+# If it's a secure "rediss://" URL (like Upstash), we need SSL settings.
+# If it's a normal "redis://" URL (like Docker), we don't.
+if REDIS_URL.startswith('rediss://'):
+    ssl_conf = {'ssl_cert_reqs': 'none'}
+    CELERY_BROKER_URL = f"{REDIS_URL}?ssl_cert_reqs=none"
+    CELERY_RESULT_BACKEND = f"{REDIS_URL}?ssl_cert_reqs=none"
 else:
-    CELERY_BROKER_URL = redis_url
-    CELERY_RESULT_BACKEND = redis_url
+    ssl_conf = {}
+    CELERY_BROKER_URL = REDIS_URL
+    CELERY_RESULT_BACKEND = REDIS_URL
 
 CELERY_TASK_ALWAYS_EAGER = False 
 CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
 
+# CACHING
 CACHES = {
     "default": {
         "BACKEND": "django_redis.cache.RedisCache",
         "LOCATION": CELERY_BROKER_URL,
         "OPTIONS": {
             "CLIENT_CLASS": "django_redis.client.DefaultClient",
-            "CONNECTION_POOL_KWARGS": {"ssl_cert_reqs": None}
+            "CONNECTION_POOL_KWARGS": ssl_conf
         }
     }
 }
 
-# --- LOGIN/LOGOUT REDIRECTS ---
+
+# LOGIN/LOGOUT REDIRECTS
 LOGIN_REDIRECT_URL = 'dashboard' 
 LOGOUT_REDIRECT_URL = 'login'
 LOGIN_URL = 'login'
 
-# --- ERROR HANDLERS ---
+# ERROR HANDLERS
 CSRF_FAILURE_VIEW = 'tracker.views.csrf_failure_json'
-
-# --- MIDDLEWARE ---
-# Ensure WhiteNoise is added. 
-# Note: It's safer to add this to the main MIDDLEWARE list above if possible, 
-# but this works if the list exists.
-if 'whitenoise.middleware.WhiteNoiseMiddleware' not in MIDDLEWARE:
-    MIDDLEWARE.insert(1, 'whitenoise.middleware.WhiteNoiseMiddleware')
-
-
+GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY')

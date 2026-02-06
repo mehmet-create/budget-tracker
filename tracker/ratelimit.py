@@ -1,38 +1,29 @@
 import time
-from django_redis import get_redis_connection
-from asgiref.sync import sync_to_async
+from django.core.cache import cache
 
 class RateLimitError(Exception):
     pass
 
-@sync_to_async
-def check_ratelimit(key: str, limit: int, period: int):
+def check_ratelimit(key_prefix, limit=5, period=60):
     """
-    Async Sliding Window Rate Limiter using Redis Sorted Sets.
+    Synchronous Rate Limiter.
+    Uses Django's standard cache backend (Redis/Locmem).
     """
-    redis_conn = get_redis_connection("default")
-    cache_key = f"rl:{key}"
-    now = time.time()
-    window_start = now - period
-
-    with redis_conn.pipeline() as pipe:
-        try:
-            pipe.zremrangebyscore(cache_key, 0, window_start)
-            pipe.zcard(cache_key)
-            pipe.zadd(cache_key, {now: now})
-            pipe.expire(cache_key, period + 1)
-            results = pipe.execute()
-            
-            current_count = results[1] # Count BEFORE adding new one
-            
-            if current_count >= limit:
-                wait_time = period 
-                raise RateLimitError(f"Too many attempts. Please wait {wait_time} seconds.")
-                
-            return True
-        except Exception as e:
-            if isinstance(e, RateLimitError):
-                raise e
-            # Fail open if Redis is down, or log error
-            print(f"Redis Error: {e}")
-            raise RateLimitError("System busy. Please try again.")
+    # Create a unique key for the cache
+    key = f"ratelimit:{key_prefix}"
+    
+    # Get current usage history (list of timestamps)
+    with cache.lock(f"{key}:lock", timeout=5):
+        history = cache.get(key, [])
+        now = time.time()
+        
+        # Clean old timestamps
+        history = [t for t in history if t > (now - period)]
+        
+        if len(history) >= limit:
+            raise RateLimitError("Too many requests. Please try again later.")
+        
+        history.append(now)
+        cache.set(key, history, timeout=period)
+        
+    return True

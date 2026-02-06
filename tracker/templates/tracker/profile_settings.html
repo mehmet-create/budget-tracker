@@ -40,7 +40,9 @@
 
                     <div class="mb-4">
                         <label class="form-label small fw-bold text-muted text-uppercase">Current Email</label>
-                        <input type="text" class="form-control bg-light" value="{{ user.email }}" disabled>
+                        
+                        <input type="text" class="form-control bg-light" name="email" value="{{ user.email }}" readonly>
+                        
                         <small class="text-muted">To change your email, use the Security section below.</small>
                     </div>
 

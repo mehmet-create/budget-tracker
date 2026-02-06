@@ -46,9 +46,7 @@ class SignUpForm(forms.ModelForm):
 
     class Meta:
         model = User
-        fields = ["username", "first_name", "last_name", "email"]
-
-    # ... inside class SignUpForm(forms.ModelForm): ...
+        fields = ["username", "first_name", "last_name"]
 
     def clean_username(self):
         username = self.cleaned_data.get('username')
@@ -125,10 +123,22 @@ class SignUpForm(forms.ModelForm):
             user.save()
         return user
     
+class TransactionForm(forms.ModelForm):
+    class Meta:
+        model = Transaction
+        fields = ['amount', 'category', 'type', 'date', 'description']
+        
+        widgets = {
+            'date': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
+            'category': forms.Select(attrs={'class': 'form-select'}),
+            'type': forms.Select(attrs={'class': 'form-select'}),
+            'description': forms.Textarea(attrs={'rows': 3, 'class': 'form-control'}),
+            'amount': forms.NumberInput(attrs={'class': 'form-control'}),
+        }    
 class BudgetGoalForm(forms.ModelForm):
     category = forms.ChoiceField(
         choices=[],
-        label="Select or Define Category",
+        label="Select Category",
         widget=forms.Select(attrs={'class': 'form-select'})
     )
     
@@ -148,53 +158,49 @@ class BudgetGoalForm(forms.ModelForm):
         self.user = user 
         super().__init__(*args, **kwargs)
         
-        base_choices = list(Transaction.CATEGORY_CHOICES)
+        base_choices = dict(Transaction.CATEGORY_CHOICES)
+        
 
-        user_categories = Transaction.objects.filter(
-            user=self.user,
-            type='Expense'
-        ).values_list('category', flat=True)
+        final_choices = []
+        for key, label in base_choices.items():
+            if key not in ['income', 'salary', 'deposit']: 
+                final_choices.append((key, label))
+        
+        final_choices.sort(key=lambda x: x[1])
 
-        user_categories = {c.strip().lower() for c in user_categories if c}
+        self.fields['category'].choices = [('', 'Select Category...')] + final_choices
 
-        merged = {value: label for value, label in base_choices}
-        for c in user_categories:
-            merged.setdefault(c, c.title())
-
-        self.fields['category'].choices = [('', 'Select Category...')] + sorted(merged.items())
-
+    def clean_category(self):
+        category = self.cleaned_data.get('category')
+        valid_keys = [c[0] for c in Transaction.CATEGORY_CHOICES]
+        
+        if category not in valid_keys:
+            raise forms.ValidationError(f"'{category}' is not a valid category.")
+            
+        return category
 
     def clean(self):
         cleaned_data = super().clean()
-        category = cleaned_data.get('category', '').lower()
-        cleaned_data['category'] = category
+        category = cleaned_data.get('category')
         
         if self.user and category:
-            month = self.instance.month
-            year = self.instance.year
+            month = self.instance.month if self.instance.month else 0
+            year = self.instance.year if self.instance.year else 0
 
-            duplicate_check = BudgetGoal.objects.filter(
-                user=self.user,
-                category=category,
-                month=month,
-                year=year
-            )
-
-            if self.instance.pk:
-                duplicate_check = duplicate_check.exclude(pk=self.instance.pk)
-
-            if duplicate_check.exists():
-                raise forms.ValidationError(
-                    f"A budget goal for '{category}' already exists for {month}/{year}."
-                )
+            pass 
 
         return cleaned_data
-    
 class ProfileUpdateForm(forms.ModelForm):
+    username = forms.CharField(
+        required=True,
+        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Username'})
+    )
     first_name = forms.CharField(
+        required=True,
         widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'First Name'})
     )
     last_name = forms.CharField(
+        required=True,
         widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Last Name'})
     )
     
@@ -207,29 +213,12 @@ class ProfileUpdateForm(forms.ModelForm):
 
         for field_name in self.fields:
             self.fields[field_name].widget.attrs['class'] = 'form-control'
-            self.fields[field_name].label = '' 
         self.fields['username'].label = 'Username'
         self.fields['first_name'].label = 'First Name'
         self.fields['last_name'].label = 'Last Name'
-        self.fields['email'].label = 'Email Address'    
 
-
-class SequentialPasswordChangeForm(PasswordChangeForm):
-    def clean_new_password1(self):
-        password = self.data.get("new_password1")
-        
-        validators = [
-            MinimumLengthValidator(min_length=8), 
-            UserAttributeSimilarityValidator(),
-            CommonPasswordValidator(),
-            NumericPasswordValidator(),
-        ]
-        
-        for validator in validators:
-            try:
-                validator.validate(password, user=self.user)
-            except ValidationError as e:
-                raise ValidationError(e.messages[0])
-                
-        self.cleaned_data['new_password1'] = password
-        return password
+class CSVUploadForm(forms.Form):
+    file = forms.FileField(
+        label="Select CSV File",
+        widget=forms.FileInput(attrs={'class': 'form-control', 'accept': '.csv'})
+    )

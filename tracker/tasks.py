@@ -1,25 +1,29 @@
+import logging
 from celery import shared_task
-from django.core.mail import send_mail
-from django.utils import timezone
-from datetime import timedelta
-from django.contrib.auth import get_user_model
+from django.core.mail import EmailMultiAlternatives
+from django.conf import settings
 
-@shared_task
-def send_email_task(recipient, subject, body):
-    send_mail(
-        subject,
-        "", 
-        'onboarding@resend.dev',
-        [recipient],
-        html_message=body
-    )
-    return f"Email sent to {recipient}"
+logger = logging.getLogger(__name__)
 
-@shared_task
-def cleanup_unverified_users_task():
-    User = get_user_model()
-    threshold = timezone.now() - timedelta(hours=24)
-    
-    count, _ = User.objects.filter(is_active=False, date_joined__lt=threshold).delete()
-    
-    return f"Cleaned up {count} unverified users."
+@shared_task(bind=True, max_retries=3)
+def send_email_task(self, to_email, subject, html_content):
+    """
+    Standard Synchronous Celery Task.
+    No 'async', no 'await'. Just standard Python.
+    """
+    try:
+        msg = EmailMultiAlternatives(
+            subject=subject,
+            body="Please view this email in a generic HTML client.",
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            to=[to_email]
+        )
+        msg.attach_alternative(html_content, "text/html")
+        msg.send()
+        
+        logger.info(f"Email sent successfully to {to_email}")
+        return f"Email sent to {to_email}"
+        
+    except Exception as e:
+        logger.error(f"Failed to send email to {to_email}: {str(e)}")
+        raise self.retry(exc=e, countdown=60)

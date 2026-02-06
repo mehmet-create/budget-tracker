@@ -65,7 +65,7 @@
 
 <div class="row">
     <div class="col-lg-8 mb-4">
-        <div class="card shadow-sm h-100">
+        <div class="card shadow-sm">
             <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
                 <h5 class="mb-0 fw-bold text-primary"><i class="fas fa-bullseye me-2"></i>Budget Goals</h5>
                 <a href="{% url 'goals_list' %}" class="btn btn-sm btn-outline-primary">Manage</a>
@@ -76,7 +76,7 @@
                     <div class="mb-4">
                         <div class="d-flex justify-content-between align-items-end mb-1">
                             <div>
-                                <span class="fw-bold text-dark">{{ goal.category }}</span>
+                                <span class="fw-bold text-dark">{{ goal.get_category_display }}</span>
                                 <span class="text-muted small ms-2">({% currency goal.spent %} / {% currency goal.target %})</span>
                             </div>
                             <span class="badge {% if goal.status == 'exceeded' %}bg-danger{% elif goal.status == 'warning' %}bg-warning text-dark{% else %}bg-success{% endif %}">
@@ -103,7 +103,27 @@
     </div>
 
     <div class="col-lg-4 mb-4">
-        <div class="card shadow-sm h-100">
+        
+        <div class="card shadow-sm border-0 bg-gradient-primary text-white mb-4" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+            <div class="card-body p-4">
+                <div class="d-flex align-items-center mb-3">
+                    <div class="bg-white bg-opacity-25 p-2 rounded-circle me-3">
+                        <i class="fas fa-robot fa-2x text-white"></i>
+                    </div>
+                    <div>
+                        <h5 class="fw-bold mb-0 text-white">Audit</h5>
+                        <small class="text-white-50">Find wasted subscriptions</small>
+                    </div>
+                </div>
+                <p class="card-text text-white opacity-75 small mb-3">
+                    Paste your bank statement text and find recurring charges you can cut.
+                </p>
+                <button type="button" class="btn btn-light w-100 fw-bold text-primary shadow-sm" data-bs-toggle="modal" data-bs-target="#aiAuditModal">
+                    <i class="fas fa-magic me-2"></i>Run Audit
+                </button>
+            </div>
+        </div>
+        <div class="card shadow-sm">
             <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
                 <h5 class="mb-0 fw-bold text-dark"><i class="fas fa-history me-2"></i>Recent</h5>
                 <a href="{% url 'transactions' %}" class="btn btn-sm btn-link text-decoration-none">View All</a>
@@ -116,12 +136,12 @@
                             <i class="fas {% if t.type == 'Income' %}fa-arrow-down{% else %}fa-shopping-bag{% endif %}"></i>
                         </div>
                         <div>
-                            <div class="fw-bold text-truncate" style="max-width: 120px;">{{ t.category }}</div>
+                            <div class="fw-bold text-truncate" style="max-width: 120px;">{{ t.category|title }}</div>
                             <small class="text-muted">{{ t.date|date:"M d" }}</small>
                         </div>
                     </div>
                     <span class="fw-bold {% if t.type == 'Income' %}text-success{% else %}text-danger{% endif %}">
-                        {% if t.type == 'Income' %}+{% else %}-{% endif %} {% currency t.amount %}
+                        {% if t.type == 'Income' %}+{% else %}-{% endif %} {{ t.amount }}
                     </span>
                 </div>
                 {% empty %}
@@ -130,6 +150,37 @@
                 </div>
                 {% endfor %}
             </div>
+        </div>
+    </div>
+</div>
+<div class="modal fade" id="aiAuditModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-light">
+                <h5 class="modal-title fw-bold"><i class="fas fa-robot me-2 text-primary"></i>Subscription Detective</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form action="{% url 'subscription_audit' %}" method="POST">
+                {% csrf_token %}
+                <div class="modal-body">
+                    <div class="alert alert-info border-0 d-flex align-items-center" role="alert">
+                        <i class="fas fa-info-circle me-2"></i>
+                        <small>Copy raw text from your bank statement or CSV and paste it below.</small>
+                    </div>
+                    <div class="mb-3">
+                        <textarea name="transactions" class="form-control font-monospace bg-light" rows="10" placeholder="DATE      DESCRIPTION           AMOUNT
+01/15     NETFLIX.COM           $15.99
+01/16     SPOTIFY USA           $10.99
+01/20     MCDONALDS             $12.50..."></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-search me-2"></i>Analyze My Spend
+                    </button>
+                </div>
+            </form>
         </div>
     </div>
 </div>
