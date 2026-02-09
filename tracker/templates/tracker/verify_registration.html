@@ -24,8 +24,8 @@
                     {% csrf_token %}
                     
                     <div class="mb-4">
-                        <label class="form-label small fw-bold text-muted text-uppercase">Enter Verification Code</label>
-                        <input type="text" name="code" 
+                           <label class="form-label small fw-bold text-muted text-uppercase" for="registrationCode">Enter Verification Code</label>
+                           <input type="text" id="registrationCode" name="code" 
                                class="form-control form-control-lg text-center fw-bold text-primary" 
                                placeholder="0 0 0 0 0 0" 
                                style="letter-spacing: 0.5rem; font-size: 1.5rem;" 

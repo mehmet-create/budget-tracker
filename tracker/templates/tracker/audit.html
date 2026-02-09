@@ -1,5 +1,6 @@
 {% extends 'tracker/base.html' %}
 {% load humanize %}
+{% load tracker_filters %}
 
 {% block title %}AI Audit{% endblock %}
 
@@ -49,7 +50,7 @@
                         <div class="d-flex justify-content-between align-items-start mb-3">
                             <h5 class="card-title fw-bold mb-0">{{ sub.name }}</h5>
                             <span class="fs-5 fw-bold text-danger">
-                                ${{ sub.cost|floatformat:2|intcomma }}
+                                {% currency sub.cost %}
                             </span>
                         </div>
 

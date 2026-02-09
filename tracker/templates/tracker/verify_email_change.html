@@ -32,8 +32,8 @@
                 <form method="POST">
                     {% csrf_token %}
                     <div class="mb-4">
-                        <label class="form-label small text-uppercase fw-bold text-muted">Enter 6-Digit Code</label>
-                        <input type="text" name="code" 
+                           <label class="form-label small text-uppercase fw-bold text-muted" for="emailChangeCode">Enter 6-Digit Code</label>
+                           <input type="text" id="emailChangeCode" name="code" 
                                class="form-control form-control-lg text-center fw-bold" 
                                placeholder="0 0 0 0 0 0" 
                                style="letter-spacing: 0.5rem; font-size: 1.5rem;" 
@@ -52,7 +52,7 @@
                     <p class="small text-muted mb-1">Didn't receive the code?</p>
                     <form method="POST" action="{% url 'resend_verification_code' %}" class="d-inline">
                         {% csrf_token %}
-                        <button type="submit" class="btn btn-link p-0 text-decoration-none">
+                        <button type="submit" id="resendBtn" class="btn btn-link p-0 text-decoration-none">
                             Resend Code
                         </button>
                     </form>

@@ -1,5 +1,6 @@
 import random
 from datetime import timedelta
+import datetime as dt
 from django.utils import timezone
 from django.contrib.auth import get_user_model, authenticate
 from django.db import transaction
@@ -11,7 +12,12 @@ from .models import BudgetGoal
 from .schemas import SetGoalDTO, TransactionDTO
 from django.shortcuts import get_object_or_404
 from openpyxl import load_workbook
+from openpyxl.utils.datetime import from_excel
+from django.conf import settings
+from google import genai
+from google.genai import types
 import csv
+import json
 import io
 import re
 User = get_user_model()
@@ -241,11 +247,69 @@ def delete_transaction(transaction_id: int, user_id: int):
     txn.delete()
     return True
 
-def import_transactions_service(dto: ImportTransactionsDTO):
+# --- HELPER: Modern AI Categorization Engine ---
+def get_categories_from_ai(descriptions):
     """
-    Parses the uploaded file and creates transactions.
-    Returns the number of created transactions.
+    Sends a batch of descriptions to Gemini using the modern SDK.
+    Returns a dictionary: {'Uber': 'Transport', 'Spar': 'Food'}
     """
+    if not hasattr(settings, 'GEMINI_API_KEY') or not settings.GEMINI_API_KEY:
+        print("AI SKIPPED: No API Key found.")
+        return {}
+
+    unique_descs = list(set(descriptions))
+    if not unique_descs: return {}
+
+    # 1. Initialize Modern Client
+    try:
+        client = genai.Client(api_key=settings.GEMINI_API_KEY)
+    except Exception as e:
+        print(f"AI Client Init Failed: {e}")
+        return {}
+
+    # 2. The Prompt
+    prompt = f"""
+    You are a Nigerian financial assistant. Map these transaction descriptions to ONE category: 
+    [Food, Transport, Bills, Housing, Entertainment, Shopping, Salary, Income, Other].
+
+    Rules:
+    1. "Airtime", "Data", "MTN", "Airtel", "9mobile", "Glo" -> Bills.
+    2. "Uber", "Bolt", "Indriver", "Fuel", "Petrol", "Oil" -> Transport.
+    3. "Water", "Coke", "Drinks", "Spar", "Shoprite", "Market", "Kitchen", "Food" -> Food.
+    4. "Bet", "Sporty", "1xbet", "Football", "Wallet" -> Entertainment.
+    5. "Transfer" -> Other (unless context is clear).
+    
+    Input List:
+    {json.dumps(unique_descs)}
+
+    Return ONLY a JSON Object mapping "Description" : "Category".
+    """
+
+    try:
+        # 3. Call Gemini with Native JSON Mode
+        response = client.models.generate_content(
+            model='gemini-2.0-flash', # Using a faster, modern model
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                response_mime_type='application/json' # 👈 This guarantees valid JSON
+            )
+        )
+        
+        # 4. Parse (No need to strip markdown anymore!)
+        return json.loads(response.text)
+        
+    except Exception as e:
+        print(f"AI Categorization Failed: {e}")
+        return {}
+
+# --- HELPER: Excel Date ---
+def excel_date_to_datetime(serial):
+    base_date = dt.datetime(1899, 12, 30)
+    delta = dt.timedelta(days=serial)
+    return base_date + delta
+
+# --- MAIN SERVICE ---
+def import_transactions_service(dto):
     uploaded_file = dto.file
     filename = uploaded_file.name.lower()
     raw_rows = []
@@ -266,132 +330,149 @@ def import_transactions_service(dto: ImportTransactionsDTO):
         raw_rows = list(reader)
 
     # 2. FIND HEADERS
+    def normalize_header(value):
+        return re.sub(r'\s+', ' ', str(value).strip().lower())
+
+    date_keywords = ['date', 'time', 'posting date', 'transaction date']
+    money_keywords = ['money', 'amount', 'credit', 'debit', 'withdrawal', 'deposit', 'inflow', 'outflow', 'balance']
+
     header_row_index = None
-    col_map = {} 
+    col_map = {}
 
     for idx, row in enumerate(raw_rows):
         if not row: continue
-        row_str_list = [str(cell).strip().lower() for cell in row if cell is not None]
-        
-        has_date = any('date' in s for s in row_str_list)
-        has_money = any('money' in s for s in row_str_list) or any('amount' in s for s in row_str_list)
+        row_str_list = [normalize_header(cell) for cell in row if cell is not None]
+        has_date = any(any(k in s for k in date_keywords) for s in row_str_list)
+        has_money = any(any(k in s for k in money_keywords) for s in row_str_list)
 
         if has_date and has_money:
             header_row_index = idx
             for col_idx, cell in enumerate(row):
-                if not cell: continue
-                val = str(cell).strip().lower()
-                if 'date' in val: col_map['date'] = col_idx
-                elif 'money in' in val: col_map['money_in'] = col_idx
-                elif 'money out' in val: col_map['money_out'] = col_idx
-                elif 'amount' in val: col_map['money_in'] = col_idx 
-                elif 'description' in val: col_map['desc'] = col_idx
-                elif 'category' in val: col_map['cat'] = col_idx
-            break 
+                if cell is None: continue
+                val = normalize_header(cell)
+                if any(k in val for k in ['date', 'time']): col_map['date'] = col_idx
+                elif any(k in val for k in ['money in', 'credit', 'deposit', 'inflow']): col_map['money_in'] = col_idx
+                elif any(k in val for k in ['money out', 'debit', 'withdrawal', 'outflow']): col_map['money_out'] = col_idx
+                elif any(k in val for k in ['amount', 'value']): col_map['amount'] = col_idx
+                elif any(k in val for k in ['description', 'details', 'narration', 'memo', 'narrative']): col_map['desc'] = col_idx
+            break
 
     if header_row_index is None:
-        raise ValueError("Could not find headers (Date & Money). Check your file.")
+        raise ValueError("Could not find valid headers (Date & Amount) in the file.")
 
-    # 3. PROCESS ROWS
-    success_count = 0
+    # 3. PREPARE AI BATCH
+    rows_to_process = []
+    descriptions_to_classify = []
     
-    BANK_CATEGORY_MAP = {
-        'airtime': 'bills', 'data': 'bills', 'betting': 'entertainment',
-        'inward': 'income', 'outward': 'other', 'transfer': 'other', 
-        'bills': 'bills', 'food': 'food', 'transport': 'transport', 
-        'web': 'shopping', 'pos': 'shopping', 'atm': 'other',
-        'salary': 'income', 'rent': 'housing'
-    }
-    DESCRIPTION_KEYWORDS = {
-        'food': ['plantain', 'pepper', 'yam', 'beans', 'market', 'meat', 'fish', 'soup', 'gala', 'suya', 'spaghetti', 'noodles', 'rice', 'biscuit', 'shawarma', 'burger', 'pizza', 'restaurant', 'kitchen', 'cafe'],
-        'bills': ['airtime', 'data', 'mtn', 'glo', 'airtel', '9mobile', 'nepa', 'phcn', 'ikedc', 'ekedc', 'electric', 'water', 'gas'],
-        'transport': ['uber', 'bolt', 'indriver', 'fuel', 'petrol', 'diesel', 'ride', 'trip', 'driver', 'bus', 'lags'],
-        'shopping': ['jumia', 'konga', 'amazon', 'store', 'shop', 'mall', 'supermarket', 'clothes', 'shoe', 'purchase', 'super glue'],
-        'entertainment': ['bet', 'sporty', '1xbet', 'netflix', 'spotify', 'cinema', 'movie'],
-        'income': ['salary', 'deposit', 'refund', 'credit', 'dividend']
-    }
-
-    # Helper to check for digits
-    def has_digits(val):
-        return val and re.search(r'\d', str(val))
-
     for i, row in enumerate(raw_rows[header_row_index + 1:]):
-        try:
-            # A. Parse Date
-            if 'date' not in col_map or len(row) <= col_map['date']: continue
-            date_val = row[col_map['date']]
-            if not date_val: continue
-            
-            date_obj = None
-            if isinstance(date_val, datetime):
-                date_obj = date_val.date()
-            else:
-                date_str = str(date_val).strip()
-                formats = ['%d/%m/%y %H:%M:%S', '%d/%m/%Y %H:%M:%S', '%d/%m/%y', '%d/%m/%Y', '%b %d, %Y', '%Y-%m-%d']
-                for fmt in formats:
-                    try:
-                        clean_date = date_str.replace(',', '')
-                        date_obj = datetime.strptime(clean_date, fmt).date()
-                        break
-                    except ValueError:
-                        continue
-            
-            if not date_obj: continue
+        if 'date' not in col_map: continue
+        date_val = row[col_map['date']]
+        if date_val is None or str(date_val).strip() == '': continue
 
-            # B. Parse Amount
-            money_in_idx = col_map.get('money_in')
-            money_out_idx = col_map.get('money_out')
-            money_in = row[money_in_idx] if money_in_idx is not None and len(row) > money_in_idx else None
-            money_out = row[money_out_idx] if money_out_idx is not None and len(row) > money_out_idx else None
-            
-            raw_amount_str = ''
-            transaction_type = 'Expense'
+        # Date Parsing
+        date_obj = None
+        if isinstance(date_val, (dt.datetime, dt.date)): date_obj = date_val
+        elif isinstance(date_val, (int, float)):
+            try: date_obj = excel_date_to_datetime(date_val)
+            except: continue
+        else:
+            date_str = str(date_val).strip()
+            formats = ['%d/%m/%Y %H:%M:%S', '%d/%m/%y %H:%M:%S', '%d/%m/%Y', '%Y-%m-%d']
+            for fmt in formats:
+                try:
+                    date_obj = dt.datetime.strptime(date_str, fmt)
+                    break
+                except ValueError: continue
+        
+        if not date_obj: continue
 
-            if has_digits(money_in):
-                raw_amount_str = str(money_in)
+        # Amount Logic
+        money_in_idx = col_map.get('money_in')
+        money_out_idx = col_map.get('money_out')
+        amount_idx = col_map.get('amount')
+        final_amount = 0
+        transaction_type = 'Expense'
+
+        def clean_money(val):
+            if val is None: return 0
+            if isinstance(val, (int, float)): return float(val)
+            clean = str(val).replace('₦', '').replace(',', '').replace(' ', '').strip()
+            try: return float(clean)
+            except: return 0
+
+        if money_in_idx is not None or money_out_idx is not None:
+            val_in = clean_money(row[money_in_idx]) if money_in_idx is not None and len(row) > money_in_idx else 0
+            val_out = clean_money(row[money_out_idx]) if money_out_idx is not None and len(row) > money_out_idx else 0
+            if val_in > 0:
+                final_amount = val_in
                 transaction_type = 'Income'
-            elif has_digits(money_out):
-                raw_amount_str = str(money_out)
+            elif val_out > 0:
+                final_amount = val_out
                 transaction_type = 'Expense'
-            else:
-                continue 
+        elif amount_idx is not None and len(row) > amount_idx:
+            raw_amt = clean_money(row[amount_idx])
+            final_amount = abs(raw_amt)
+            transaction_type = 'Expense' if raw_amt < 0 else 'Income'
 
-            clean_amount = raw_amount_str.replace(',', '').replace('₦', '').replace('N', '')
-            clean_amount = re.sub(r'[^\d.]', '', clean_amount)
-            if not clean_amount: continue
-            final_amount = float(clean_amount)
+        if final_amount == 0: continue
 
-            # C. Parse Category
-            desc_idx = col_map.get('desc', -1)
-            cat_idx = col_map.get('cat', -1)
-            desc_raw = str(row[desc_idx]).strip() if desc_idx >= 0 and len(row) > desc_idx else ''
-            cat_raw = str(row[cat_idx]).strip().lower() if cat_idx >= 0 and len(row) > cat_idx else ''
-            
-            final_category = 'other'
-            if cat_raw in BANK_CATEGORY_MAP:
-                final_category = BANK_CATEGORY_MAP[cat_raw]
+        # Description
+        desc_idx = col_map.get('desc')
+        description = str(row[desc_idx]).strip() if desc_idx is not None and len(row) > desc_idx else "Transaction"
+        if not description or description.lower() == 'nan': description = "Imported Transaction"
+        
+        rows_to_process.append({
+            'date': date_obj,
+            'amount': final_amount,
+            'desc': description,
+            'type': transaction_type
+        })
+        descriptions_to_classify.append(description)
 
-            if final_category == 'other':
-                combined_text = (cat_raw + " " + desc_raw).lower()
-                for category, keywords in DESCRIPTION_KEYWORDS.items():
-                    if any(keyword in combined_text for keyword in keywords):
-                        final_category = category
-                        break 
-                if 'kip:' in combined_text or 'trf' in combined_text:
-                    final_category = 'income' if transaction_type == 'Income' else 'other'
+    # 4. CALL AI (Smart Categorization)
+    print(f"Asking AI to categorize {len(set(descriptions_to_classify))} items...")
+    ai_category_map = get_categories_from_ai(descriptions_to_classify)
+    
+    # Fallback Map (Your Safety Net)
+    FALLBACK_MAP = {
+        'Food': ['food', 'restaurant', 'burger', 'pizza', 'chicken', 'spar', 'shoprite', 'market', 'coke', 'water', 'kitchen'],
+        'Transport': ['uber', 'bolt', 'fuel', 'petrol', 'oil', 'taxify', 'ride'],
+        'Bills': ['airtime', 'data', 'mtn', 'glo', '9mobile', 'airtel', 'nepa', 'phcn', 'dstv', 'gotv'],
+        'Entertainment': ['netflix', 'spotify', 'bet', 'sporty', '1xbet', 'football', 'movie'],
+        'Housing': ['rent', 'carpenter', 'plumber'],
+        'Shopping': ['jumia', 'konga', 'amazon', 'clothes', 'shoe']
+    }
 
-            Transaction.objects.create(
-                user_id=dto.user_id,
-                date=date_obj,
-                description=desc_raw.title() or "Transaction",
-                amount=final_amount,
-                category=final_category,
-                type=transaction_type
-            )
-            success_count += 1
-            
-        except Exception:
-            continue
+    # 5. SAVE
+    success_count = 0
+    for item in rows_to_process:
+        desc_clean = item['desc']
+        final_category = 'Other'
+
+        # Priority 1: AI
+        if desc_clean in ai_category_map:
+            final_category = ai_category_map[desc_clean]
+        
+        # Priority 2: Fallback Keywords (If AI said "Other" or failed)
+        if final_category == 'Other':
+            desc_lower = desc_clean.lower()
+            for cat, keys in FALLBACK_MAP.items():
+                if any(k in desc_lower for k in keys):
+                    final_category = cat
+                    break
+        
+        if item['type'] == 'Income':
+            final_category = 'Income'
+
+        Transaction.objects.create(
+            user_id=dto.user_id,
+            date=item['date'],
+            amount=item['amount'],
+            description=desc_clean.title(),
+            category=final_category,
+            type=item['type']
+        )
+        success_count += 1
 
     return success_count
 

@@ -136,12 +136,12 @@
                             <i class="fas {% if t.type == 'Income' %}fa-arrow-down{% else %}fa-shopping-bag{% endif %}"></i>
                         </div>
                         <div>
-                            <div class="fw-bold text-truncate" style="max-width: 120px;">{{ t.category|title }}</div>
+                            <div class="fw-bold text-truncate" style="max-width: 120px;" title="{{ t.category|title }}">{{ t.category|title }}</div>
                             <small class="text-muted">{{ t.date|date:"M d" }}</small>
                         </div>
                     </div>
                     <span class="fw-bold {% if t.type == 'Income' %}text-success{% else %}text-danger{% endif %}">
-                        {% if t.type == 'Income' %}+{% else %}-{% endif %} {{ t.amount }}
+                        {% if t.type == 'Income' %}+{% else %}-{% endif %} {% currency t.amount %}
                     </span>
                 </div>
                 {% empty %}

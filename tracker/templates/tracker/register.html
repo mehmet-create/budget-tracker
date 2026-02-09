@@ -20,7 +20,7 @@
                 {% csrf_token %}
 
                 <div class="mb-3">
-                    <label class="form-label fw-bold small text-muted text-uppercase">Username</label>
+                    <label class="form-label fw-bold small text-muted text-uppercase" for="{{ form.username.id_for_label }}">Username</label>
                     {{ form.username }}
                     {% if form.username.errors %}
                         <div class="text-danger small mt-1">
@@ -31,7 +31,7 @@
 
                 <div class="row g-2 mb-3">
                     <div class="col-md-6">
-                        <label class="form-label fw-bold small text-muted text-uppercase">First Name</label>
+                        <label class="form-label fw-bold small text-muted text-uppercase" for="{{ form.first_name.id_for_label }}">First Name</label>
                         {{ form.first_name }}
                         {% if form.first_name.errors %}
                             <div class="text-danger small mt-1">
@@ -40,7 +40,7 @@
                         {% endif %}
                     </div>
                     <div class="col-md-6">
-                        <label class="form-label small fw-bold text-muted text-uppercase">Last Name</label>
+                        <label class="form-label small fw-bold text-muted text-uppercase" for="{{ form.last_name.id_for_label }}">Last Name</label>
                         {{ form.last_name }}
                         {% if form.last_name.errors %}
                             <div class="text-danger small mt-1">
@@ -51,7 +51,7 @@
                 </div>
 
                 <div class="mb-3">
-                    <label class="form-label small fw-bold text-muted text-uppercase">Email Address</label>
+                    <label class="form-label small fw-bold text-muted text-uppercase" for="{{ form.email.id_for_label }}">Email Address</label>
                     {{ form.email }}
                     {% if form.email.errors %}
                         <div class="text-danger small mt-1">
@@ -61,7 +61,7 @@
                 </div>
 
                 <div class="mb-3">
-                    <label class="form-label small fw-bold text-muted text-uppercase">Password</label>
+                    <label class="form-label small fw-bold text-muted text-uppercase" for="{{ form.password.id_for_label }}">Password</label>
                     {{ form.password }}
                     <div class="form-text small text-muted">Must be at least 8 characters long.</div>
                     {% if form.password.errors %}
@@ -72,7 +72,7 @@
                 </div>
 
                 <div class="mb-4">
-                    <label class="form-label small fw-bold text-muted text-uppercase">Confirm Password</label>
+                    <label class="form-label small fw-bold text-muted text-uppercase" for="{{ form.confirm_password.id_for_label }}">Confirm Password</label>
                     {{ form.confirm_password }}
                     {% if form.confirm_password.errors %}
                         <div class="text-danger small mt-1">

@@ -4,6 +4,8 @@ import io
 import re
 import codecs
 import logging
+import os
+import uuid
 from datetime import datetime, timedelta
 from collections import defaultdict
 from decimal import Decimal
@@ -25,11 +27,12 @@ from django.db.models import Sum, Q
 from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
 from django.conf import settings
 from django.views.decorators.http import require_POST, require_GET, require_http_methods
+from django.core.files.storage import default_storage
 from django.db import transaction
 from .models import Transaction, BudgetGoal, UserProfile, BudgetLock
 from .forms import SignUpForm, BudgetGoalForm, ProfileUpdateForm, TransactionForm, CSVUploadForm
 from . import services, schemas
-from .tasks import send_email_task
+from .tasks import send_email_task, import_transactions_task
 from .ratelimit import check_ratelimit, RateLimitError
 from .ai_services import scan_receipt
 from .ai_services import audit_subscriptions
@@ -938,23 +941,33 @@ def import_transactions(request):
         if 'file' not in request.FILES:
              raise ValueError("No file uploaded.")
 
-        # 1. DTO handles validation (Size, Extension)
-        dto = schemas.ImportTransactionsDTO(
+        uploaded_file = request.FILES['file']
+
+        # DTO handles validation (Size, Extension)
+        schemas.ImportTransactionsDTO(
             user_id=request.user.id,
-            file=request.FILES['file']
+            file=uploaded_file
         )
-        
-        # 2. Service handles parsing & database
-        count = services.import_transactions_service(dto)
-        
-        if count > 0:
-            messages.success(request, f"Imported {count} transactions.")
-        else:
-            messages.error(request, "No transactions found in file.")
+
+        safe_name = os.path.basename(uploaded_file.name)
+        storage_path = default_storage.save(
+            f"imports/{request.user.id}/{uuid.uuid4().hex}_{safe_name}",
+            uploaded_file
+        )
+
+        import_transactions_task.delay(request.user.id, storage_path)
+
+        if is_json_request(request):
+            return JsonResponse({'status': 'accepted', 'message': 'Upload received. Processing started.'}, status=202)
+        messages.success(request, "Upload received. Processing started.")
 
     except ValueError as e:
+        if is_json_request(request):
+            return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
         messages.error(request, str(e))
     except Exception as e:
+        if is_json_request(request):
+            return JsonResponse({'status': 'error', 'message': 'An error occurred during import.'}, status=500)
         messages.error(request, "An error occurred during import.")
         
     return redirect('transactions')

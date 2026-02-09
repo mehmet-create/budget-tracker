@@ -20,7 +20,7 @@
                     {% csrf_token %}
                     
                     <div class="mb-3">
-                        <label class="form-label small fw-bold text-muted text-uppercase">Username</label>
+                        <label class="form-label small fw-bold text-muted text-uppercase" for="{{ form.username.id_for_label }}">Username</label>
                         {{ form.username }}
                         {% if form.username.errors %}
                             <div class="text-danger small mt-1">{{ form.username.errors.0 }}</div>
@@ -29,19 +29,19 @@
 
                     <div class="row g-3 mb-3">
                         <div class="col-md-6">
-                            <label class="form-label small fw-bold text-muted text-uppercase">First Name</label>
+                            <label class="form-label small fw-bold text-muted text-uppercase" for="{{ form.first_name.id_for_label }}">First Name</label>
                             {{ form.first_name }}
                         </div>
                         <div class="col-md-6">
-                            <label class="form-label small fw-bold text-muted text-uppercase">Last Name</label>
+                            <label class="form-label small fw-bold text-muted text-uppercase" for="{{ form.last_name.id_for_label }}">Last Name</label>
                             {{ form.last_name }}
                         </div>
                     </div>
 
                     <div class="mb-4">
-                        <label class="form-label small fw-bold text-muted text-uppercase">Current Email</label>
+                        <label class="form-label small fw-bold text-muted text-uppercase" for="currentEmail">Current Email</label>
                         
-                        <input type="text" class="form-control bg-light" name="email" value="{{ user.email }}" readonly>
+                        <input type="text" id="currentEmail" class="form-control bg-light" name="email" value="{{ user.email }}" readonly>
                         
                         <small class="text-muted">To change your email, use the Security section below.</small>
                     </div>
@@ -62,12 +62,12 @@
             <div class="card-body p-4">
                 
                 <div class="mb-4 pb-4 border-bottom">
-                    <label class="form-label fw-bold">Change Email Address</label>
+                    <label class="form-label fw-bold" for="newEmail">Change Email Address</label>
                     <p class="small text-muted mb-2">We will send a verification code to the new address.</p>
                     
                     <form method="POST" class="d-flex gap-2">
                         {% csrf_token %}
-                        <input type="email" name="email" class="form-control" placeholder="Enter new email address" required>
+                        <input type="email" id="newEmail" name="email" class="form-control" placeholder="Enter new email address" required>
                         <button type="submit" name="request_email_change" class="btn btn-outline-warning text-nowrap">
                             Verify & Update
                         </button>

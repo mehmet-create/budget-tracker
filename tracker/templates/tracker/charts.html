@@ -23,8 +23,25 @@
                 </div>
                 <div class="card-body">
                     <div style="position: relative; height: 350px;">
-                        <canvas id="financeChart"></canvas>
+                        <canvas id="financeChart" role="img" aria-label="Income, expense, and net balance bar chart"></canvas>
                     </div>
+                    <div id="financeSummary" class="visually-hidden"></div>
+                    <table class="table table-sm mt-3" aria-label="Income and expense data">
+                        <tbody>
+                            <tr>
+                                <th scope="row">Income</th>
+                                <td class="text-end" id="incomeCell"></td>
+                            </tr>
+                            <tr>
+                                <th scope="row">Expense</th>
+                                <td class="text-end" id="expenseCell"></td>
+                            </tr>
+                            <tr>
+                                <th scope="row">Net Balance</th>
+                                <td class="text-end" id="balanceCell"></td>
+                            </tr>
+                        </tbody>
+                    </table>
                 </div>
             </div>
         </div>
@@ -37,8 +54,18 @@
                 <div class="card-body d-flex align-items-center justify-content-center">
                     {% if category_values %}
                         <div style="position: relative; height: 350px; width: 100%;">
-                            <canvas id="expensePie"></canvas>
+                            <canvas id="expensePie" role="img" aria-label="Expense breakdown doughnut chart"></canvas>
                         </div>
+                        <div id="expenseSummary" class="visually-hidden"></div>
+                        <table class="table table-sm mt-3" aria-label="Expense breakdown by category">
+                            <thead>
+                                <tr>
+                                    <th scope="col">Category</th>
+                                    <th scope="col" class="text-end">Amount</th>
+                                </tr>
+                            </thead>
+                            <tbody id="expenseTableBody"></tbody>
+                        </table>
                     {% else %}
                         <div class="text-center text-muted py-5">
                             <i class="fas fa-search-dollar fa-3x mb-3 opacity-25"></i>
@@ -64,6 +91,20 @@
     // --- 1. BAR CHART CONFIG ---
     const barCtx = document.getElementById('financeChart').getContext('2d');
     const balanceColor = balance >= 0 ? '#198754' : '#dc3545'; // Bootstrap Success/Danger colors
+
+    const formatCurrency = (value) => `${currencySymbol}${Number(value).toLocaleString()}`;
+
+    const financeSummary = document.getElementById('financeSummary');
+    const incomeCell = document.getElementById('incomeCell');
+    const expenseCell = document.getElementById('expenseCell');
+    const balanceCell = document.getElementById('balanceCell');
+
+    if (financeSummary && incomeCell && expenseCell && balanceCell) {
+        incomeCell.textContent = formatCurrency(income);
+        expenseCell.textContent = formatCurrency(expense);
+        balanceCell.textContent = formatCurrency(balance);
+        financeSummary.textContent = `Income ${formatCurrency(income)}, Expense ${formatCurrency(expense)}, Net Balance ${formatCurrency(balance)}.`;
+    }
 
     new Chart(barCtx, {
         type: 'bar',
@@ -113,6 +154,17 @@
     // Calculate total for percentage
     const pieData = {{ category_values|safe }};
     const totalExpense = pieData.reduce((a, b) => a + b, 0);
+    const expenseSummary = document.getElementById('expenseSummary');
+    const expenseTableBody = document.getElementById('expenseTableBody');
+
+    if (expenseSummary && expenseTableBody) {
+        const labels = {{ category_labels|safe }};
+        expenseTableBody.innerHTML = labels.map((label, index) => {
+            const value = pieData[index] ?? 0;
+            return `<tr><th scope="row">${label}</th><td class="text-end">${formatCurrency(value)}</td></tr>`;
+        }).join('');
+        expenseSummary.textContent = labels.map((label, index) => `${label}: ${formatCurrency(pieData[index] ?? 0)}`).join(', ');
+    }
 
     new Chart(pieCtx, {
         type: 'doughnut', // Doughnut looks more modern than Pie

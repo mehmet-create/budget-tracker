@@ -15,11 +15,13 @@
     
     <div class="col-md-6">
         <form id="periodForm" method="GET" action="{% url 'goals_list' %}" class="d-flex justify-content-md-end gap-2 mt-2 mt-md-0">
+            <label class="visually-hidden" for="monthSelect">Month</label>
             <select name="month" id="monthSelect" class="form-select w-auto shadow-sm">
                 {% for m_num, m_name in months_choices %}
                     <option value="{{ m_num }}" {% if m_num == view_month.month %}selected{% endif %}>{{ m_name }}</option>
                 {% endfor %}
             </select>
+            <label class="visually-hidden" for="yearSelect">Year</label>
             <select name="year" id="yearSelect" class="form-select w-auto shadow-sm">
                 {% for y in year_choices %}
                     <option value="{{ y }}" {% if y == view_year %}selected{% endif %}>{{ y }}</option>
@@ -150,11 +152,11 @@
                                 <td class="text-end pe-4">
                                     {% if not is_history %}
                                     <div class="btn-group">
-                                        <a href="{% url 'edit_goal' pk=goal.pk %}" class="btn btn-sm btn-link text-muted p-0 me-2" title="Edit">
-                                            <i class="fas fa-edit"></i>
+                                        <a href="{% url 'edit_goal' pk=goal.pk %}" class="btn btn-sm btn-link text-muted p-0 me-2" title="Edit" aria-label="Edit goal">
+                                            <i class="fas fa-edit" aria-hidden="true"></i>
                                         </a>
-                                        <a href="{% url 'delete_goal' pk=goal.pk %}" class="btn btn-sm btn-link text-danger p-0" title="Delete">
-                                            <i class="fas fa-trash-alt"></i>
+                                        <a href="{% url 'delete_goal' pk=goal.pk %}" class="btn btn-sm btn-link text-danger p-0" title="Delete" aria-label="Delete goal">
+                                            <i class="fas fa-trash-alt" aria-hidden="true"></i>
                                         </a>
                                     </div>
                                     {% else %}

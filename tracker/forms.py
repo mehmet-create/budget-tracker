@@ -220,5 +220,8 @@ class ProfileUpdateForm(forms.ModelForm):
 class CSVUploadForm(forms.Form):
     file = forms.FileField(
         label="Select CSV File",
-        widget=forms.FileInput(attrs={'class': 'form-control', 'accept': '.csv'})
+        widget=forms.FileInput(attrs={
+            'class': 'form-control',
+            'accept': '.csv,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv'
+        })
     )

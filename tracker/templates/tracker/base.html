@@ -41,7 +41,8 @@
                     <li class="nav-item me-3">
                         <form action="{% url 'change_currency' %}" method="post" class="d-inline">
                             {% csrf_token %}
-                            <select name="currency_code" class="form-select form-select-sm bg-light border-0" onchange="this.form.submit()" style="width: auto; cursor: pointer;">
+                            <label class="visually-hidden" for="currencySelect">Currency</label>
+                            <select id="currencySelect" name="currency_code" class="form-select form-select-sm bg-light border-0" onchange="this.form.submit()" style="width: auto; cursor: pointer;">
                                 {% for code, symbol in AVAILABLE_CURRENCIES.items %}
                                     <option value="{{ code }}" {% if symbol == CUSTOM_CURRENCY_SYMBOL %}selected{% endif %}>
                                         {{ code }} ({{ symbol }})
