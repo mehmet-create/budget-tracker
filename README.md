@@ -194,7 +194,7 @@ This project is licensed under the MIT License.
 ## 👤 Author
 
 **Your Name**
-- GitHub: [mehmet-create](https://github.com/yourusername)
+- GitHub: [@mehmet-create](https://github.com/mehmet-create)
 
 ## 🙏 Acknowledgments
 
