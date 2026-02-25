@@ -1,10 +1,19 @@
-#!/bin/bash
+#!/bin/sh
 
-# Navigate to the project directory
-cd /path/to/your/project
+# Start script for the Render deployment
+# Configuring Celery and Gunicorn
 
-# Start Celery with optimized configurations for Render deployment
-celery -A your_project_name worker --loglevel=info &
+# Start Gunicorn and Celery workers
 
-# Start Gunicorn with 512MB memory limit
-exec gunicorn --bind 0.0.0.0:8000 your_project_name.wsgi:application --workers 2 --timeout 30
+# Set the variables
+export APP_MODULE="myapp:app"  # Replace 'myapp' with your app's module name
+export WORKERS=3  # Number of Gunicorn workers
+export CELERY_WORKERS=2  # Number of Celery workers
+export CELERY_BROKER_URL="redis://localhost:6379/0"  # Change if you're using a different broker
+export CELERY_RESULT_BACKEND="redis://localhost:6379/0"  # Change based on your configuration
+
+# Start Gunicorn
+exec gunicorn ${APP_MODULE} --workers ${WORKERS} --bind 0.0.0.0:8000
+
+# Start Celery
+celery -A myapp worker --loglevel=info --concurrency=${CELERY_WORKERS}
