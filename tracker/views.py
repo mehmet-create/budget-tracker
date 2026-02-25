@@ -1,19 +1,18 @@
-# New optimized charts view implementation
+def charts():
+    transactions = []
+    total_income = 0
+    total_expenses = 0
 
-from django.db.models import Sum, Count
-from django.shortcuts import render
-from .models import Transaction
+    # Load all transactions into the list (pseudo-code)
+    for transaction in load_transactions():
+        transactions.append(transaction)
+        if transaction['type'] == 'income':
+            total_income += transaction['amount']
+        elif transaction['type'] == 'expense':
+            total_expenses += transaction['amount']
 
-
-def charts_view(request):
-    # Optimized aggregate queries for charts
-    income_data = Transaction.objects.filter(transaction_type='income').aggregate(total_income=Sum('amount'), count=Count('id'))
-    expense_data = Transaction.objects.filter(transaction_type='expense').aggregate(total_expense=Sum('amount'), count=Count('id'))
-
-    context = {
-        'total_income': income_data['total_income'],
-        'total_income_count': income_data['count'],
-        'total_expense': expense_data['total_expense'],
-        'total_expense_count': expense_data['count'],
+    return {
+        'total_income': total_income,
+        'total_expenses': total_expenses,
+        'transactions': transactions
     }
-    return render(request, 'tracker/charts.html', context)
