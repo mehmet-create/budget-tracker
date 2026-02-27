@@ -53,6 +53,12 @@ if not DEBUG:
     SECURE_HSTS_PRELOAD = True
     SECURE_BROWSER_XSS_FILTER = True
     SECURE_CONTENT_TYPE_NOSNIFF = True
+    SECURE_REFERRER_POLICY = 'strict-origin-when-cross-origin'
+    # Prevent clickjacking
+    X_FRAME_OPTIONS = 'DENY'
+    # Limit upload size to 5MB globally (prevents memory exhaustion)
+    DATA_UPLOAD_MAX_MEMORY_SIZE = 5 * 1024 * 1024
+    FILE_UPLOAD_MAX_MEMORY_SIZE = 5 * 1024 * 1024
     X_FRAME_OPTIONS = 'DENY'
 
 
@@ -81,12 +87,28 @@ MIDDLEWARE = [
 
 ROOT_URLCONF = 'budget.urls'
 
+if not DEBUG:
+    try:
+        from django.template.loaders.cached import Loader  # noqa
+        _template_dirs = None
+    except Exception:
+        pass
+
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
         'DIRS': [BASE_DIR / 'templates'],
         'APP_DIRS': True,
         'OPTIONS': {
+            'loaders': [
+                ('django.template.loaders.cached.Loader', [
+                    'django.template.loaders.filesystem.Loader',
+                    'django.template.loaders.app_directories.Loader',
+                ]) if not DEBUG else 'django.template.loaders.app_directories.Loader',
+            ] if not DEBUG else [
+                'django.template.loaders.filesystem.Loader',
+                'django.template.loaders.app_directories.Loader',
+            ],
             'context_processors': [
                 'django.template.context_processors.request',
                 'django.contrib.auth.context_processors.auth',
@@ -111,7 +133,7 @@ DATABASES = {
     )
 }
 DATABASES['default']['ATOMIC_REQUESTS'] = False
-
+DATABASES['default']['CONN_MAX_AGE'] = 60 
 
 if DEBUG:
     # DEVELOPMENT (LOCAL) SETTINGS: GMAIL
@@ -194,3 +216,7 @@ LOGIN_URL = 'login'
 CSRF_FAILURE_VIEW = 'tracker.views.csrf_failure_json'
 GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY')
 GROQ_API_KEY = os.environ.get('GROQ_API_KEY')
+
+SESSION_COOKIE_AGE = 60 * 60 * 24 * 7
+SESSION_SAVE_EVERY_REQUEST = True
+SESSION_EXPIRE_AT_BROWSER_CLOSE = False

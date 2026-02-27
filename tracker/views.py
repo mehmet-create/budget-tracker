@@ -442,6 +442,18 @@ def cancel_registration(request):
     return redirect('register')
 
 class CustomPasswordResetView(PasswordResetView):
+    def dispatch(self, request, *args, **kwargs):
+        # Rate limit: 5 password reset attempts per hour per IP
+        ip = request.META.get('HTTP_X_FORWARDED_FOR', '').split(',')[0].strip() or request.META.get('REMOTE_ADDR', '')
+        try:
+            check_ratelimit(f"pwd_reset_{ip}", limit=5, period=3600)
+        except RateLimitError as e:
+            if is_json_request(request):
+                return JsonResponse({'status': 'error', 'message': str(e)}, status=429)
+            messages.error(request, str(e))
+            return redirect('password_reset')
+        return super().dispatch(request, *args, **kwargs)
+
     def form_valid(self, form):
         opts = {
             'use_https': self.request.is_secure(),
@@ -582,6 +594,7 @@ class CustomPasswordResetCompleteView(auth_views.PasswordResetCompleteView):
             })
         return super().get(request, *args, **kwargs)
 
+@login_required
 @require_GET
 def dashboard(request):
     user = request.user
@@ -687,6 +700,7 @@ def landing(request):
         return redirect('dashboard')
     return render(request, 'tracker/landing.html')
 
+@login_required
 @require_GET
 def transaction_list(request):
     user = request.user
@@ -780,6 +794,7 @@ def transaction_list(request):
 
 from . import schemas, services
 
+@login_required
 @require_http_methods(["GET", "POST"])
 def add_transaction(request):
     user = request.user
@@ -833,6 +848,7 @@ def add_transaction(request):
     return render(request, 'tracker/add_transaction.html', {'form': form})
 
 
+@login_required
 @require_http_methods(["GET", "POST"])
 def edit_transaction(request, pk):
     user = request.user
@@ -874,6 +890,7 @@ def edit_transaction(request, pk):
     return render(request, "tracker/editTransaction.html", {"form": form, "transaction": transaction})
 
 
+@login_required
 @require_http_methods(["GET", "POST", "DELETE"])
 def delete_transaction(request, pk):
     user = request.user
@@ -954,8 +971,9 @@ def subscription_audit_view(request):
     # ── Run audit on POST ─────────────────────────────────────────
     if request.method == 'POST':
         submitted = True
-        db_text  = request.POST.get('transactions', '').strip()
-        csv_text = request.POST.get('csv_paste', '').strip()
+        MAX_AUDIT_CHARS = 20_000  # ~5,000 transactions — prevents DoS/prompt injection
+        db_text  = request.POST.get('transactions', '')[:MAX_AUDIT_CHARS].strip()
+        csv_text = request.POST.get('csv_paste', '')[:MAX_AUDIT_CHARS].strip()
 
         csv_file = request.FILES.get('csv_file')
         if csv_file:
@@ -971,7 +989,7 @@ def subscription_audit_view(request):
             try:
                 results = audit_subscriptions(combined, start_date_str, end_date_str)
                 if results is None:
-                    error_msg = "Transactions couldn't be analysed."
+                    error_msg = "Tranasctions couldn't be analysed. Please check the format and try again."
             except Exception as e:
                 logger.error(f"Audit error: {e}")
                 error_msg = "Something went wrong running the audit. Please try again."
@@ -989,6 +1007,7 @@ def subscription_audit_view(request):
         'goals':            goals,
     })
 
+@login_required
 @require_GET
 def charts(request):
     user = request.user
@@ -1057,6 +1076,7 @@ def import_transactions(request):
 
     return redirect('transactions')
         
+@login_required
 @require_GET
 def goals_list(request, year=None, month=None):
     user = request.user
@@ -1131,6 +1151,7 @@ def goals_list(request, year=None, month=None):
         'can_import': can_import,
     })
 
+@login_required
 @require_POST
 def set_goals(request):
     user = request.user
@@ -1170,6 +1191,7 @@ def set_goals(request):
         messages.error(request, str(e))
         return redirect('goals_list')
 
+@login_required
 @require_http_methods(["GET", "POST"])
 def edit_goal(request, pk):
     user = request.user
@@ -1201,6 +1223,7 @@ def edit_goal(request, pk):
 
     return render(request, 'tracker/edit_goal.html', {'form': form, 'goal': goal})
 
+@login_required
 @require_http_methods(["GET", "POST", "DELETE"])
 def delete_goal(request, pk):
     user = request.user
@@ -1277,6 +1300,7 @@ def import_previous_goals(request):
 
     return redirect(f'/goals/?year={year}&month={month}')
 
+@login_required
 @require_POST
 def change_currency(request):
     user = request.user
@@ -1352,6 +1376,7 @@ def resend_verification_code_profile(request):
         
     return redirect('verify_email_change')
 
+@login_required
 @require_http_methods(["GET", "POST"])
 def profile_settings(request):
     user = request.user

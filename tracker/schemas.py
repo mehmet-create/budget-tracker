@@ -85,11 +85,34 @@ class TransactionDTO:
     date: datetime.date
     description: str = "Transaction"
 
+    VALID_CATEGORIES = {
+        'income', 'food', 'transport', 'housing', 'bills',
+        'entertainment', 'shopping', 'health', 'education', 'other'
+    }
+    VALID_TYPES = {'Income', 'Expense'}
+
     def __post_init__(self):
-        """Sanitize data types"""
+        """Validate and sanitize transaction data."""
+        # Amount
         if not isinstance(self.amount, Decimal):
-            self.amount = Decimal(str(self.amount))
-            
+            try:
+                self.amount = Decimal(str(self.amount))
+            except Exception:
+                raise ValueError("Invalid amount.")
+        if self.amount <= 0:
+            raise ValueError("Amount must be greater than zero.")
+        if self.amount > Decimal('999999999.99'):
+            raise ValueError("Amount is unrealistically large.")
+
+        # Type
+        if self.transaction_type not in self.VALID_TYPES:
+            raise ValueError(f"Invalid transaction type. Must be Income or Expense.")
+
+        # Category
+        if self.category not in self.VALID_CATEGORIES:
+            raise ValueError(f"Invalid category.")
+
+        # Date
         if isinstance(self.date, str):
             for fmt in ('%Y-%m-%d', '%d/%m/%Y', '%m/%d/%Y'):
                 try:
@@ -97,8 +120,13 @@ class TransactionDTO:
                     break
                 except ValueError:
                     pass
-        
-        self.description = self.description.strip().title() if self.description else "Transaction"
+        if not isinstance(self.date, datetime.date):
+            raise ValueError("Invalid date format.")
+
+        # Description — strip, cap length, no script tags
+        desc = (self.description or '').strip()
+        desc = desc[:255]  # enforce DB max_length
+        self.description = desc if desc else "Transaction"
 
 @dataclass 
 class ImportTransactionsDTO:
@@ -136,6 +164,14 @@ class SetGoalDTO:
             self.target_amount = Decimal(str(self.target_amount))
         except (ValueError, TypeError):
             raise ValueError("Invalid number format for month, year, or target.")
+        if self.target_amount <= 0:
+            raise ValueError("Target amount must be greater than zero.")
+        if self.target_amount > Decimal('999999999.99'):
+            raise ValueError("Target amount is unrealistically large.")
+        if not (1 <= self.month <= 12):
+            raise ValueError("Invalid month.")
+        if not (2000 <= self.year <= 2100):
+            raise ValueError("Invalid year.")
 
         if (self.year < now.year) or (self.year == now.year and self.month < now.month):
              raise ValueError(f"Cannot set goals for the past ({self.month}/{self.year})")    
