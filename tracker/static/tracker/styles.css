@@ -286,29 +286,35 @@ footer { margin-top: auto; }
    RESPONSIVE BREAKPOINTS
    ═══════════════════════════════════════════════════════════════ */
 
-/* Tablet and below: show mobile nav, hide desktop nav links */
-@media (max-width: 991.98px) {
-    .mobile-bottom-nav { display: block; }
-    /* Hide the collapsible nav links (not the brand) */
-    .navbar .navbar-collapse { display: none !important; }
-    .navbar-toggler { display: none !important; }
+/* ── Desktop (≥992px): normal navbar, NO mobile bottom nav ─── */
+@media (min-width: 992px) {
+    .mobile-bottom-nav  { display: none !important; }
+    .navbar-collapse    { display: flex !important; }
 }
 
-/* Mobile: push content above bottom nav */
-@media (max-width: 767.98px) {
+/* ── Tablet / small laptop (<992px): switch to bottom nav ──── */
+@media (max-width: 991.98px) {
+    .mobile-bottom-nav { display: block; }
+    /* Collapse the top navbar links — keep brand + currency picker */
+    .navbar .navbar-collapse { display: none !important; }
+    .navbar-toggler { display: none !important; }
+    /* Push page content above the bottom bar */
     body.authenticated { padding-bottom: 72px; }
+}
 
-    /* Stat values — still readable on phone but not oversized */
+/* ── Mobile (≤767px) ─────────────────────────────────────────── */
+@media (max-width: 767.98px) {
     .stat-value { font-size: 1.1rem; }
     .stat-label { font-size: 0.65rem; }
     .card-body  { padding: 0.875rem !important; }
     .txn-desc   { max-width: 120px; }
 }
 
+/* ── Small phones (≤575px) ───────────────────────────────────── */
 @media (max-width: 575.98px) {
-    .btn-lg     { font-size: 0.95rem; padding: 0.6rem 1rem; }
-    h2          { font-size: 1.5rem; }
-    h3          { font-size: 1.2rem; }
+    .btn-lg { font-size: 0.95rem; padding: 0.6rem 1rem; }
+    h2      { font-size: 1.5rem; }
+    h3      { font-size: 1.2rem; }
 }
 
 /* ── Mobile profile popup menu ──────────────────────────── */
