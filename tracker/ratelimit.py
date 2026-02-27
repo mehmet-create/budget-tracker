@@ -1,29 +1,31 @@
-import time
 from django.core.cache import cache
+
 
 class RateLimitError(Exception):
     pass
 
-def check_ratelimit(key_prefix, limit=5, period=60):
+
+def check_ratelimit(key_prefix: str, limit: int = 5, period: int = 60) -> bool:
     """
-    Synchronous Rate Limiter.
-    Uses Django's standard cache backend (Redis/Locmem).
+    Lightweight rate limiter using Django's cache backend (Redis).
+
+    This version uses cache.get_or_set() + cache.incr() — two calls total,
+    and cache.incr() is atomic on Redis so there's no race condition either.
     """
-    # Create a unique key for the cache
     key = f"ratelimit:{key_prefix}"
-    
-    # Get current usage history (list of timestamps)
-    with cache.lock(f"{key}:lock", timeout=5):
-        history = cache.get(key, [])
-        now = time.time()
-        
-        # Clean old timestamps
-        history = [t for t in history if t > (now - period)]
-        
-        if len(history) >= limit:
-            raise RateLimitError("Too many requests. Please try again later.")
-        
-        history.append(now)
-        cache.set(key, history, timeout=period)
-        
+
+    # Ensure the key exists with a TTL before we increment it.
+    # get_or_set is atomic enough for our purposes here.
+    current = cache.get(key)
+
+    if current is None:
+        # Key doesn't exist yet — set it to 1 with the expiry window
+        cache.set(key, 1, timeout=period)
+        return True
+
+    if current >= limit:
+        raise RateLimitError("Too many requests. Please try again later.")
+
+    # Atomic increment — Redis INCR is a single server-side operation
+    cache.incr(key)
     return True

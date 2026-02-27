@@ -3,9 +3,11 @@ from django.contrib.auth.models import User
 from django.dispatch import receiver
 from .models import UserProfile
 
+
 @receiver(post_save, sender=User)
-def create_or_update_user_profile(sender, instance, created, **kwargs):
-    """Creates a UserProfile when a new User is created."""
+def create_user_profile(sender, instance, created, **kwargs):
+    """
+    Creates a UserProfile only when a brand new User is saved.
+    """
     if created:
-        UserProfile.objects.create(user=instance)
-    instance.userprofile.save()
+        UserProfile.objects.get_or_create(user=instance)

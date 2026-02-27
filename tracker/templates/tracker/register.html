@@ -1,97 +1,76 @@
 {% extends 'tracker/base.html' %}
-
-{% block title %}Create Account{% endblock %}
-
+{% block title %}Create Account — BudgetApp{% endblock %}
 {% block content %}
-<div class="row justify-content-center mt-4 mb-5">
-    <div class="col-md-6 col-lg-5">
-        <div class="card border-0 shadow-sm p-4">
-            
-            <div class="text-center mb-4">
-                <div class="icon-shape bg-primary bg-opacity-10 text-primary p-3 rounded-circle d-inline-block mb-3">
-                    <i class="fas fa-user-plus fa-2x"></i>
-                </div>
-                <h3 class="fw-bold">Create Account</h3>
-                <p class="text-secondary small">Join us to start tracking your budget effectively</p>
-            </div>
-
-
-            <form method="POST" novalidate>
-                {% csrf_token %}
-
-                <div class="mb-3">
-                    <label class="form-label fw-bold small text-muted text-uppercase" for="{{ form.username.id_for_label }}">Username</label>
-                    {{ form.username }}
-                    {% if form.username.errors %}
-                        <div class="text-danger small mt-1">
-                            <i class="fas fa-exclamation-triangle me-1"></i> {{ form.username.errors.0 }}
-                        </div>
-                    {% endif %}
-                </div>
-
-                <div class="row g-2 mb-3">
-                    <div class="col-md-6">
-                        <label class="form-label fw-bold small text-muted text-uppercase" for="{{ form.first_name.id_for_label }}">First Name</label>
-                        {{ form.first_name }}
-                        {% if form.first_name.errors %}
-                            <div class="text-danger small mt-1">
-                                <i class="fas fa-exclamation-triangle me-1"></i> {{ form.first_name.errors.0 }}
-                            </div>
-                        {% endif %}
+<div class="row justify-content-center mt-3 mb-4">
+    <div class="col-12 col-sm-10 col-md-7 col-lg-6 col-xl-5">
+        <div class="auth-card card">
+            <div class="card-body p-4">
+                <div class="text-center mb-4">
+                    <div class="auth-icon bg-primary bg-opacity-10 text-primary mb-3">
+                        <i class="fas fa-user-plus fa-lg"></i>
                     </div>
-                    <div class="col-md-6">
-                        <label class="form-label small fw-bold text-muted text-uppercase" for="{{ form.last_name.id_for_label }}">Last Name</label>
-                        {{ form.last_name }}
-                        {% if form.last_name.errors %}
-                            <div class="text-danger small mt-1">
-                                <i class="fas fa-exclamation-triangle me-1"></i> {{ form.last_name.errors.0 }}
-                            </div>
-                        {% endif %}
+                    <h3 class="fw-bold mb-1">Create Account</h3>
+                    <p class="text-muted small mb-0">Start tracking your finances — free</p>
+                </div>
+                <form method="POST" novalidate>
+                    {% csrf_token %}
+                    <div class="mb-3">
+                        <label class="form-label" for="{{ form.username.id_for_label }}">Username</label>
+                        {{ form.username }}
+                        {% if form.username.errors %}<div class="text-danger small mt-1">{{ form.username.errors.0 }}</div>{% endif %}
                     </div>
-                </div>
-
-                <div class="mb-3">
-                    <label class="form-label small fw-bold text-muted text-uppercase" for="{{ form.email.id_for_label }}">Email Address</label>
-                    {{ form.email }}
-                    {% if form.email.errors %}
-                        <div class="text-danger small mt-1">
-                            <i class="fas fa-exclamation-triangle me-1"></i> {{ form.email.errors.0 }}
+                    <div class="row g-2 mb-3">
+                        <div class="col-6">
+                            <label class="form-label" for="{{ form.first_name.id_for_label }}">First Name</label>
+                            {{ form.first_name }}
+                            {% if form.first_name.errors %}<div class="text-danger small mt-1">{{ form.first_name.errors.0 }}</div>{% endif %}
                         </div>
-                    {% endif %}
-                </div>
-
-                <div class="mb-3">
-                    <label class="form-label small fw-bold text-muted text-uppercase" for="{{ form.password.id_for_label }}">Password</label>
-                    {{ form.password }}
-                    <div class="form-text small text-muted">Must be at least 8 characters long.</div>
-                    {% if form.password.errors %}
-                        <div class="text-danger small mt-1">
-                            <i class="fas fa-exclamation-triangle me-1"></i> {{ form.password.errors.0 }}
+                        <div class="col-6">
+                            <label class="form-label" for="{{ form.last_name.id_for_label }}">Last Name</label>
+                            {{ form.last_name }}
+                            {% if form.last_name.errors %}<div class="text-danger small mt-1">{{ form.last_name.errors.0 }}</div>{% endif %}
                         </div>
-                    {% endif %}
-                </div>
-
-                <div class="mb-4">
-                    <label class="form-label small fw-bold text-muted text-uppercase" for="{{ form.confirm_password.id_for_label }}">Confirm Password</label>
-                    {{ form.confirm_password }}
-                    {% if form.confirm_password.errors %}
-                        <div class="text-danger small mt-1">
-                            <i class="fas fa-exclamation-triangle me-1"></i> {{ form.confirm_password.errors.0 }}
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label" for="{{ form.email.id_for_label }}">Email Address</label>
+                        {{ form.email }}
+                        {% if form.email.errors %}<div class="text-danger small mt-1">{{ form.email.errors.0 }}</div>{% endif %}
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label" for="{{ form.password.id_for_label }}">Password</label>
+                        <div class="input-group">
+                            {{ form.password }}
+                            <button class="btn btn-outline-secondary bg-light" type="button" onclick="togglePwd('{{ form.password.id_for_label }}',this)" tabindex="-1"><i class="fas fa-eye fa-sm"></i></button>
                         </div>
-                    {% endif %}
+                        <div class="form-text">At least 8 characters.</div>
+                        {% if form.password.errors %}<div class="text-danger small mt-1">{{ form.password.errors.0 }}</div>{% endif %}
+                    </div>
+                    <div class="mb-4">
+                        <label class="form-label" for="{{ form.confirm_password.id_for_label }}">Confirm Password</label>
+                        <div class="input-group">
+                            {{ form.confirm_password }}
+                            <button class="btn btn-outline-secondary bg-light" type="button" onclick="togglePwd('{{ form.confirm_password.id_for_label }}',this)" tabindex="-1"><i class="fas fa-eye fa-sm"></i></button>
+                        </div>
+                        {% if form.confirm_password.errors %}<div class="text-danger small mt-1">{{ form.confirm_password.errors.0 }}</div>{% endif %}
+                    </div>
+                    <div class="d-grid">
+                        <button type="submit" class="btn btn-primary btn-lg">Create Account</button>
+                    </div>
+                </form>
+                <div class="text-center mt-4 pt-3 border-top">
+                    <p class="small text-muted mb-0">Already have an account? <a href="{% url 'login' %}" class="fw-bold text-decoration-none">Sign In</a></p>
                 </div>
-
-                <div class="d-grid">
-                    <button type="submit" class="btn btn-primary btn-lg shadow-sm">Create Account</button>
-                </div>
-            </form>
-
-            <div class="text-center mt-4 pt-3 border-top">
-                <p class="small text-muted mb-0">
-                    Already have an account? <a href="{% url 'login' %}" class="text-decoration-none fw-bold">Log in</a>
-                </p>
             </div>
         </div>
     </div>
 </div>
+{% endblock %}
+{% block scripts %}
+<script>
+function togglePwd(id, btn) {
+    const f = document.getElementById(id), i = btn.querySelector('i');
+    f.type = f.type === 'password' ? 'text' : 'password';
+    i.classList.toggle('fa-eye'); i.classList.toggle('fa-eye-slash');
+}
+</script>
 {% endblock %}

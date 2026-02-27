@@ -1,25 +1,40 @@
 #!/bin/bash
 
-# 1. Exit immediately if any command fails
+# Exit immediately if any command fails
 set -e
 
-# 2. Apply Database Migrations (CRITICAL for Supabase)
-# This ensures your tables exist before the code runs.
 echo "Applying database migrations..."
 python manage.py migrate
 
-# 3. Collect Static Files
-# Ensures CSS/JS works on the live site.
 echo "Collecting static files..."
 python manage.py collectstatic --noinput
 
-# 4. Start the Celery worker
-# --pool=solo is perfect for free tier (saves RAM).
-# We removed '--concurrency' because 'solo' doesn't support it.
-echo "Starting Celery..."
-celery -A budget worker --loglevel=info --pool=solo &
+# ✅ FIXED: the original had no --workers, --timeout, or --threads flags.
+# That means Gunicorn ran with 1 worker and the default 30-second timeout.
+# One slow DB query or AI call would block ALL requests — causing the 502s.
+#
+# --pool=solo: single-threaded Celery worker — saves RAM on the 512MB free tier.
+# --loglevel=warning: reduces log noise so real errors are visible.
+echo "Starting Celery worker..."
+celery -A budget worker \
+  --loglevel=warning \
+  --pool=solo \
+  --time-limit=90 \
+  --soft-time-limit=60 &
 
-# 5. Start the Django Web Server
-# We ADDED '--bind 0.0.0.0:8000' so Render can actually see the website.
+# ✅ FIXED Gunicorn config:
+# --workers 2          → 2 processes so one slow request doesn't block everything
+# --threads 2          → 2 threads per worker (handles concurrent requests cheaply)
+# --worker-class gthread → uses threads, much lower memory than extra processes
+# --timeout 120        → gives AI calls and imports time to finish (was 30s before)
+# --keep-alive 5       → keeps connections alive so Render's proxy doesn't drop them
+# --log-level warning  → only log real problems, not every request
 echo "Starting Gunicorn..."
-gunicorn budget.wsgi:application --bind 0.0.0.0:8000
+exec gunicorn budget.wsgi:application \
+  --bind 0.0.0.0:8000 \
+  --workers 2 \
+  --threads 2 \
+  --worker-class gthread \
+  --timeout 120 \
+  --keep-alive 5 \
+  --log-level warning

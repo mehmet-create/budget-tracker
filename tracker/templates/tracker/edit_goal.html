@@ -1,62 +1,35 @@
 {% extends 'tracker/base.html' %}
 {% load tracker_filters %}
-
-{% block title %}Edit Goal{% endblock %}
-
+{% block title %}Edit Goal — BudgetApp{% endblock %}
 {% block content %}
-<div class="row justify-content-center mt-4">
-    <div class="col-md-6">
-        <div class="card border-0 shadow-sm">
+<div class="row justify-content-center mt-3">
+    <div class="col-12 col-sm-10 col-md-7 col-lg-5">
+        <div class="card">
             <div class="card-header bg-white py-3">
-                <h5 class="mb-0 fw-bold text-primary">
-                    <i class="fas fa-edit me-2"></i>Edit Budget Goal
-                </h5>
+                <h5 class="mb-0 fw-bold small text-primary"><i class="fas fa-edit me-2"></i>Edit Budget Goal</h5>
             </div>
-            
-            <div class="card-body p-4">
+            <div class="card-body p-3 p-md-4">
+                <div class="d-flex align-items-center mb-4 p-3 bg-light rounded">
+                    <div class="icon-shape bg-primary text-white me-3"><i class="fas fa-bullseye"></i></div>
+                    <div>
+                        <h6 class="mb-0 fw-bold">{{ goal.get_category_display }}</h6>
+                        <small class="text-muted">{{ goal.month }}/{{ goal.year }}</small>
+                    </div>
+                </div>
                 <form method="post">
                     {% csrf_token %}
-                    
-                    <div class="d-flex align-items-center mb-4 p-3 bg-light rounded">
-                        <div class="me-3">
-                            <div class="icon-shape bg-primary text-white rounded-circle d-flex align-items-center justify-content-center" style="width: 40px; height: 40px;">
-                                <i class="fas fa-bullseye"></i>
-                            </div>
-                        </div>
-                        <div>
-                            <h6 class="mb-0 fw-bold text-dark">{{ goal.get_category_display }}</h6>
-                            <small class="text-muted">For {{ goal.month }}/{{ goal.year }}</small>
-                        </div>
-                    </div>
-
                     <input type="hidden" name="category" value="{{ goal.category }}">
-
                     <div class="mb-4">
-                        <label for="id_target_amount" class="form-label small fw-bold text-muted text-uppercase">Target Amount</label>
+                        <label class="form-label" for="id_target_amount">Target Amount</label>
                         <div class="input-group">
-                            <span class="input-group-text bg-white border-end-0 text-muted">
-                                {{ CUSTOM_CURRENCY_SYMBOL|default:"$" }}
-                            </span>
-                            <input type="number" 
-                                   name="target_amount" 
-                                   id="id_target_amount" 
-                                   step="0.01" 
-                                   class="form-control border-start-0 ps-0" 
-                                   value="{{ goal.target_amount|stringformat:'.2f' }}" 
-                                   required>
+                            <span class="input-group-text bg-light text-muted">{{ CUSTOM_CURRENCY_SYMBOL }}</span>
+                            <input type="number" name="target_amount" id="id_target_amount" step="0.01" min="1"
+                                   class="form-control" value="{{ goal.target_amount|stringformat:'.2f' }}" required>
                         </div>
-                        {% if form.target_amount.errors %}
-                            <div class="text-danger small mt-1">{{ form.target_amount.errors.0 }}</div>
-                        {% endif %}
                     </div>
-                    
                     <div class="d-grid gap-2">
-                        <button type="submit" class="btn btn-primary btn-lg shadow-sm">
-                            <i class="fas fa-save me-2"></i> Save Changes
-                        </button>
-                        <a href="{% url 'goals_list' %}?year={{ goal.year }}&month={{ goal.month }}" class="btn btn-light text-muted">
-                            Cancel
-                        </a>
+                        <button type="submit" class="btn btn-primary btn-lg"><i class="fas fa-save me-2"></i>Save Changes</button>
+                        <a href="{% url 'goals_list' %}?year={{ goal.year }}&month={{ goal.month }}" class="btn btn-light text-muted">Cancel</a>
                     </div>
                 </form>
             </div>

@@ -1,23 +1,27 @@
 from django import template
-from django.contrib.humanize.templatetags.humanize import intcomma
 
 register = template.Library()
 
+
 @register.simple_tag(takes_context=True)
 def currency(context, value):
-    request = context.get('request')
-    symbol = '₦'
-    if request and 'currency_symbol' in request.session:
-        symbol = request.session['currency_symbol']
-    
-    try:
-        if value is None or value == '':
-            val_float = 0.0
-        else:
-            val_float = float(value)
-    except (ValueError, TypeError):
-        val_float = 0.0
+    """
+    Formats a number with the user's preferred currency symbol.
 
-    formatted_val = "{:,.2f}".format(val_float)
-    
-    return f"{symbol}{formatted_val}"
+    ✅ FIXED: the original read from request.session directly, duplicating
+    exactly what the context_processors.py already does. Two systems doing the
+    same job means two places to maintain and potential inconsistency if one
+    updates and the other doesn't.
+
+    Now it reads CUSTOM_CURRENCY_SYMBOL from the template context, which is
+    already put there by the currency_symbol context processor on every request.
+    One source of truth.
+    """
+    symbol = context.get('CUSTOM_CURRENCY_SYMBOL', '₦')
+
+    try:
+        val = float(value) if value not in (None, '') else 0.0
+    except (ValueError, TypeError):
+        val = 0.0
+
+    return f"{symbol}{val:,.2f}"

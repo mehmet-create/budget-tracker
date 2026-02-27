@@ -1,92 +1,156 @@
 {% extends 'tracker/base.html' %}
-{% load humanize %}
 {% load tracker_filters %}
 
-{% block title %}AI Audit{% endblock %}
+{% block title %}Dashboard — BudgetApp{% endblock %}
 
 {% block content %}
-<div class="container-fluid">
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <div>
-            <h2 class="fw-bold mb-1">
-                <i class="fas fa-robot text-primary me-2"></i>Subscription Auditor
-            </h2>
-            <p class="text-muted mb-0">Paste your statement text and find recurring charges.</p>
-        </div>
-        <a href="{% url 'dashboard' %}" class="btn btn-outline-secondary">
-            <i class="fas fa-arrow-left me-2"></i>Back to Dashboard
-        </a>
-    </div>
 
-    <div class="card shadow-sm mb-4">
-        <div class="card-body">
-            <form method="post">
-                {% csrf_token %}
-                <label class="form-label fw-semibold">Paste your bank statement text here:</label>
-                <textarea name="transactions" rows="10" class="form-control font-monospace bg-light" placeholder="01/15 Netflix $15.99..."></textarea>
-                <button type="submit" class="btn btn-primary mt-3">
-                    <i class="fas fa-magic me-2"></i>Run Audit
-                </button>
-            </form>
-        </div>
+<div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+    <div>
+        <h2 class="fw-bold mb-0">Dashboard</h2>
+        <p class="text-muted mb-0">{{ current_month|date:"F Y" }}</p>
     </div>
+    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addTxnModal">
+        <i class="fas fa-plus me-2"></i>Add Transaction
+    </button>
+</div>
 
-    {% if results and results.subscriptions %}
-        <div class="row g-4">
-            <div class="col-12">
-                <div class="alert alert-success d-flex align-items-center border-0 shadow-sm" role="alert">
-                    <i class="fas fa-check-circle fa-2x me-3"></i>
-                    <div>
-                        <h5 class="alert-heading fw-bold mb-0">Analysis Complete</h5>
-                        <p class="mb-0 opacity-75">The AI found {{ results.subscriptions|length }} potential subscriptions.</p>
+<!-- Stat Cards -->
+<div class="row g-3 mb-4">
+    <div class="col-12 col-sm-4">
+        <div class="card border-0 h-100" style="background:#d1fae5;">
+            <div class="card-body p-3 p-md-4">
+                <div class="d-flex justify-content-between align-items-start mb-2">
+                    <p class="stat-label mb-0" style="color:#065f46;">Total Income</p>
+                    <div class="icon-shape" style="background:#a7f3d0;width:36px;height:36px;color:#065f46;">
+                        <i class="fas fa-arrow-up"></i>
                     </div>
                 </div>
+                <p class="stat-value" style="color:#065f46;">{% currency total_income %}</p>
             </div>
+        </div>
+    </div>
+    <div class="col-12 col-sm-4">
+        <div class="card border-0 h-100" style="background:#fee2e2;">
+            <div class="card-body p-3 p-md-4">
+                <div class="d-flex justify-content-between align-items-start mb-2">
+                    <p class="stat-label mb-0" style="color:#991b1b;">Total Expenses</p>
+                    <div class="icon-shape" style="background:#fecaca;width:36px;height:36px;color:#991b1b;">
+                        <i class="fas fa-arrow-down"></i>
+                    </div>
+                </div>
+                <p class="stat-value" style="color:#991b1b;">{% currency total_expense %}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-12 col-sm-4">
+        <div class="card border-0 h-100" style="background:#dbeafe;">
+            <div class="card-body p-3 p-md-4">
+                <div class="d-flex justify-content-between align-items-start mb-2">
+                    <p class="stat-label mb-0" style="color:#1e40af;">Net Balance</p>
+                    <div class="icon-shape" style="background:#bfdbfe;width:36px;height:36px;color:#1e40af;">
+                        <i class="fas fa-wallet"></i>
+                    </div>
+                </div>
+                <p class="stat-value {% if balance >= 0 %}text-primary{% else %}text-danger{% endif %}">
+                    {% currency balance %}
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
 
-            {% for sub in results.subscriptions %}
-            <div class="col-md-6 col-lg-4">
-                <div class="card h-100 shadow-sm border-0 border-top border-4 {% if sub.status == 'Potential Duplicate' %}border-warning{% else %}border-primary{% endif %}">
-                    <div class="card-body">
-                        <div class="d-flex justify-content-between align-items-start mb-3">
-                            <h5 class="card-title fw-bold mb-0">{{ sub.name }}</h5>
-                            <span class="fs-5 fw-bold text-danger">
-                                {% currency sub.cost %}
+<div class="row g-4">
+
+    <!-- Budget Goals -->
+    <div class="col-12 col-xl-7">
+        <div class="card h-100">
+            <div class="card-header bg-white d-flex justify-content-between align-items-center py-3">
+                <h5 class="mb-0 fw-bold"><i class="fas fa-bullseye me-2 text-primary"></i>Budget Goals</h5>
+                <a href="{% url 'goals_list' %}" class="btn btn-outline-primary btn-sm">Manage</a>
+            </div>
+            <div class="card-body p-0">
+                {% if goals %}
+                <div class="px-4 py-2">
+                    {% for goal in goals %}
+                    <div class="goal-row">
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                            <span class="fw-semibold">{{ goal.get_category_display }}</span>
+                            <span class="badge {% if goal.remaining < 0 %}bg-danger{% elif goal.progress_percent > 80 %}bg-warning text-dark{% else %}bg-success{% endif %}">
+                                {{ goal.progress_percent|floatformat:0 }}%
                             </span>
                         </div>
-
-                        <div class="mb-3">
-                            {% if sub.status == 'Potential Duplicate' %}
-                                <span class="badge bg-warning text-dark">
-                                    <i class="fas fa-exclamation-triangle me-1"></i>Duplicate?
-                                </span>
-                            {% elif sub.status == 'Active' %}
-                                <span class="badge bg-success">
-                                    <i class="fas fa-check me-1"></i>Active
-                                </span>
-                            {% else %}
-                                <span class="badge bg-secondary">{{ sub.status }}</span>
-                            {% endif %}
+                        <div class="progress mb-2" style="height:6px;">
+                            <div class="progress-bar {% if goal.remaining < 0 %}bg-danger{% elif goal.progress_percent > 80 %}bg-warning{% else %}bg-success{% endif %}"
+                                 style="width:{% if goal.progress_percent > 100 %}100{% else %}{{ goal.progress_percent }}{% endif %}%">
+                            </div>
                         </div>
-
-                        <div class="bg-light p-3 rounded-3">
-                            <p class="card-text small text-muted mb-0">
-                                <i class="fas fa-lightbulb text-warning me-2"></i>
-                                <strong>AI Tip:</strong> {{ sub.advice }}
-                            </p>
+                        <div class="d-flex justify-content-between txn-meta">
+                            <span>{% currency goal.actual_spent %} of {% currency goal.target_amount %}</span>
+                            <span class="{% if goal.remaining < 0 %}text-danger fw-bold{% else %}text-success fw-bold{% endif %}">
+                                {% currency goal.remaining %} left
+                            </span>
                         </div>
                     </div>
+                    {% endfor %}
                 </div>
+                {% else %}
+                <div class="empty-state">
+                    <i class="fas fa-bullseye fa-3x d-block"></i>
+                    <p class="mb-3">No goals set for this month.</p>
+                    <a href="{% url 'goals_list' %}" class="btn btn-primary btn-sm">Set Budget Goals</a>
+                </div>
+                {% endif %}
             </div>
-            {% endfor %}
         </div>
-    {% elif results %}
-        <div class="text-center py-5">
-            <div class="bg-light d-inline-block p-4 rounded-circle mb-3">
-                <i class="fas fa-file-invoice-dollar fa-3x text-muted"></i>
+    </div>
+
+    <!-- Right column -->
+    <div class="col-12 col-xl-5 d-flex flex-column gap-4">
+
+        <!-- Spend Audit promo card -->
+        <div class="promo-card p-4">
+            <h5 class="fw-bold mb-1"><i class="fas fa-search me-2"></i>Spend Audit</h5>
+            <p class="mb-3 opacity-75">Find recurring subscriptions and wasted spending in your bank statement.</p>
+            <a href="{% url 'audit' %}" class="btn btn-light fw-semibold">
+                Run Audit
+            </a>
+        </div>
+
+        <!-- Recent Transactions -->
+        <div class="card flex-fill">
+            <div class="card-header bg-white d-flex justify-content-between align-items-center py-3">
+                <h5 class="mb-0 fw-bold"><i class="fas fa-clock me-2 text-primary"></i>Recent Transactions</h5>
+                <a href="{% url 'transactions' %}" class="btn btn-outline-secondary btn-sm">View All</a>
             </div>
-            <h3 class="fw-bold text-muted">No Subscriptions Found</h3>
-            <p class="text-muted">The AI couldn't detect any subscription patterns in that text.</p>
+            <div class="card-body p-3">
+                {% if recent_transactions %}
+                {% for t in recent_transactions %}
+                <div class="txn-row">
+                    <div class="txn-avatar {% if t.type == 'Income' %}bg-success text-white{% else %}bg-light text-muted{% endif %}">
+                        <i class="fas {% if t.type == 'Income' %}fa-arrow-up{% else %}fa-arrow-down{% endif %}"></i>
+                    </div>
+                    <div class="flex-grow-1" style="min-width:0">
+                        <div class="txn-desc">{{ t.description|default:t.get_category_display|truncatechars:28 }}</div>
+                        <div class="txn-meta">{{ t.get_category_display }} · {{ t.date|date:"M d" }}</div>
+                    </div>
+                    <div class="txn-amount {% if t.type == 'Income' %}text-success{% else %}text-danger{% endif %}">
+                        {% if t.type == 'Income' %}+{% else %}-{% endif %}{% currency t.amount %}
+                    </div>
+                </div>
+                {% endfor %}
+                {% else %}
+                <div class="empty-state" style="padding:2rem 1rem;">
+                    <i class="fas fa-receipt fa-2x d-block"></i>
+                    <p class="mb-2">No transactions yet.</p>
+                    <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#addTxnModal">
+                        Add First Transaction
+                    </button>
+                </div>
+                {% endif %}
+            </div>
         </div>
-    {% endif %}
+    </div>
 </div>
+
 {% endblock %}

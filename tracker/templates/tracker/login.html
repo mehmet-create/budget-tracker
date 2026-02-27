@@ -1,72 +1,55 @@
 {% extends 'tracker/base.html' %}
-
-{% block title %}Login{% endblock %}
-
+{% block title %}Sign In — BudgetApp{% endblock %}
 {% block content %}
-<div class="row justify-content-center mt-5">
-    <div class="col-md-5 col-lg-4">
-        <div class="card border-0 shadow-sm p-4">
-            
-            <div class="text-center mb-4">
-                <div class="icon-shape bg-primary bg-opacity-10 text-primary p-3 rounded-circle d-inline-block mb-3">
-                    <i class="fas fa-sign-in-alt fa-2x"></i>
-                </div>
-                <h3 class="fw-bold">Welcome Back</h3>
-                <p class="text-muted small">Sign in to continue to your dashboard</p>
-            </div>
-
-            <form method="POST" id="loginForm">
-                {% csrf_token %}
-                
-                <div class="mb-3">
-                    <label class="form-label small fw-bold text-muted text-uppercase" for="loginUsername">Username</label>
-                    <div class="input-group">
-                        <span class="input-group-text bg-light border-end-0 text-muted"><i class="fas fa-user"></i></span>
-                        <input type="text" id="loginUsername" name="username" class="form-control border-start-0 ps-0" placeholder="Enter your username" required autofocus>
+<div class="row justify-content-center mt-4 mt-md-5">
+    <div class="col-12 col-sm-9 col-md-6 col-lg-5 col-xl-4">
+        <div class="auth-card card">
+            <div class="card-body p-4">
+                <div class="text-center mb-4">
+                    <div class="auth-icon bg-primary bg-opacity-10 text-primary mb-3">
+                        <i class="fas fa-sign-in-alt fa-lg"></i>
                     </div>
+                    <h3 class="fw-bold mb-1">Welcome Back</h3>
+                    <p class="text-muted small mb-0">Sign in to continue</p>
                 </div>
-
-                <div class="mb-4">
-                    <div class="d-flex justify-content-between">
-                        <label class="form-label small fw-bold text-muted text-uppercase" for="loginPassword">Password</label>
-                        <a href="{% url 'password_reset' %}" class="small text-decoration-none text-primary">Forgot password?</a>
+                <form method="POST">
+                    {% csrf_token %}
+                    <div class="mb-3">
+                        <label class="form-label" for="loginUsername">Username</label>
+                        <div class="input-group">
+                            <span class="input-group-text bg-light border-end-0 text-muted"><i class="fas fa-user"></i></span>
+                            <input type="text" id="loginUsername" name="username" class="form-control border-start-0" placeholder="Your username" required autofocus autocomplete="username">
+                        </div>
                     </div>
-                    <div class="input-group">
-                        <span class="input-group-text bg-light border-end-0 text-muted"><i class="fas fa-lock"></i></span>
-                        <input type="password" id="loginPassword" name="password" class="form-control border-start-0 ps-0" placeholder="Enter your password" required>
+                    <div class="mb-4">
+                        <div class="d-flex justify-content-between mb-1">
+                            <label class="form-label mb-0" for="loginPassword">Password</label>
+                            <a href="{% url 'password_reset' %}" class="small text-primary text-decoration-none">Forgot?</a>
+                        </div>
+                        <div class="input-group">
+                            <span class="input-group-text bg-light border-end-0 text-muted"><i class="fas fa-lock"></i></span>
+                            <input type="password" id="loginPassword" name="password" class="form-control border-start-0" placeholder="Your password" required autocomplete="current-password">
+                            <button class="btn btn-outline-secondary bg-light border-start-0" type="button" onclick="togglePwd('loginPassword',this)" tabindex="-1"><i class="fas fa-eye fa-sm"></i></button>
+                        </div>
                     </div>
+                    <div class="d-grid">
+                        <button type="submit" class="btn btn-primary btn-lg">Sign In</button>
+                    </div>
+                </form>
+                <div class="text-center mt-4 pt-3 border-top">
+                    <p class="small text-muted mb-0">No account? <a href="{% url 'register' %}" class="fw-bold text-decoration-none">Create one</a></p>
                 </div>
-                
-                <div class="d-grid">
-                    <button type="submit" class="btn btn-primary btn-lg shadow-sm" id="submitBtn">
-                        <span id="btnText">Login</span>
-                        <span id="btnSpinner" class="spinner-border spinner-border-sm d-none ms-2" role="status" aria-hidden="true"></span>
-                    </button>
-                </div>
-            </form>
-            
-            <div class="text-center mt-4 pt-3 border-top">
-                <p class="small text-muted mb-0">
-                    Don't have an account? <a href="{% url 'register' %}" class="text-decoration-none fw-bold">Create Account</a>
-                </p>
             </div>
         </div>
     </div>
 </div>
-
+{% endblock %}
+{% block scripts %}
 <script>
-    const loginForm = document.getElementById('loginForm');
-    const submitBtn = document.getElementById('submitBtn');
-    const btnText = document.getElementById('btnText');
-    const btnSpinner = document.getElementById('btnSpinner');
-
-    loginForm.addEventListener('submit', function() {
-        // Prevent double submission
-        if(submitBtn.disabled) return;
-        
-        submitBtn.disabled = true;
-        btnText.textContent = "Authenticating...";
-        btnSpinner.classList.remove('d-none');
-    });
+function togglePwd(id, btn) {
+    const f = document.getElementById(id), i = btn.querySelector('i');
+    f.type = f.type === 'password' ? 'text' : 'password';
+    i.classList.toggle('fa-eye'); i.classList.toggle('fa-eye-slash');
+}
 </script>
 {% endblock %}

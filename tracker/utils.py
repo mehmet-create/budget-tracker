@@ -1,35 +1,35 @@
 import threading
-import resend
+from django.core.mail import EmailMultiAlternatives
 from django.conf import settings
 
+
 def is_json_request(request):
-    """
-    Returns True ONLY if the client specifically asks for JSON 
-    (like Postman or an API call). 
-    Returns False for standard web browsers.
-    """
-    accept_header = request.META.get('HTTP_ACCEPT', '')
-    content_type_header = request.META.get('CONTENT_TYPE', '')
+    """Returns True only if the client explicitly asks for JSON (Postman/API)."""
+    accept = request.META.get('HTTP_ACCEPT', '')
+    content_type = request.META.get('CONTENT_TYPE', '')
+    return 'application/json' in accept or 'application/json' in content_type
 
-    if 'application/json' in accept_header:
-        return True
-    
-    if 'application/json' in content_type_header:
-        return True
-
-    return False
 
 def send_async_email(to_email, subject, html_content):
-    def start_sending():
+    """
+    Sends an email in a background thread so the request isn't blocked.
+    Uses whatever EMAIL_BACKEND is configured in settings.py
+    (Gmail SMTP in dev, Resend SMTP in production).
+    No Celery or Redis required.
+    """
+    def _send():
         try:
-            resend.api_key = settings.RESEND_API_KEY
-            resend.Emails.send({
-                "from": settings.DEFAULT_FROM_EMAIL,
-                "to": [to_email],
-                "subject": subject,
-                "html": html_content,
-            })
+            msg = EmailMultiAlternatives(
+                subject=subject,
+                body="Please view this email in an HTML-compatible client.",
+                from_email=settings.DEFAULT_FROM_EMAIL,
+                to=[to_email],
+            )
+            msg.attach_alternative(html_content, "text/html")
+            msg.send(fail_silently=False)
         except Exception as e:
-            print(f"Background Email Error: {e}")
+            # Log but don't crash the calling request
+            import logging
+            logging.getLogger(__name__).error("Email send failed to %s: %s", to_email, e)
 
-    threading.Thread(target=start_sending).start()
+    threading.Thread(target=_send, daemon=True).start()

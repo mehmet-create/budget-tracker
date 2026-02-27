@@ -1,71 +1,26 @@
 {% extends 'tracker/base.html' %}
-
-{% block title %}Delete Account{% endblock %}
-
+{% block title %}Delete Account — BudgetApp{% endblock %}
 {% block content %}
-<div class="row justify-content-center mt-5">
-    <div class="col-md-6 col-lg-5">
-        <div class="card border-0 shadow-lg">
-            <div class="card-header bg-danger text-white py-3 text-center">
-                <h5 class="mb-0 fw-bold"><i class="fas fa-exclamation-triangle me-2"></i>Delete Account</h5>
-            </div>
-            
+<div class="row justify-content-center mt-4 mt-md-5">
+    <div class="col-12 col-sm-10 col-md-6 col-lg-5">
+        <div class="card danger-card">
             <div class="card-body p-4">
                 <div class="text-center mb-4">
-                    <p class="text-muted fs-5">We are sorry to see you go.</p>
-                    <p class="small text-danger fw-bold bg-danger bg-opacity-10 p-2 rounded">
-                        Warning: This action is permanent. All your transactions, goals, and history will be wiped immediately.
-                    </p>
+                    <div class="auth-icon bg-danger bg-opacity-10 text-danger mb-3 mx-auto"><i class="fas fa-exclamation-triangle fa-lg"></i></div>
+                    <h3 class="fw-bold text-danger mb-1">Delete Account</h3>
+                    <p class="text-muted small">This is permanent. All your transactions, goals, and data will be deleted forever.</p>
                 </div>
-
-                <form method="POST" id="deleteForm">
+                <form method="POST">
                     {% csrf_token %}
-                    
-                    <div class="mb-4 text-start">
-                        <label for="password" class="form-label small fw-bold text-muted text-uppercase">Confirm Password</label>
-                        <input type="password" 
-                               name="password" 
-                               id="password" 
-                               class="form-control" 
-                               placeholder="Enter your password to confirm" 
-                               required>
-                        <div class="form-text text-muted small">
-                            We need your password to verify it's really you.
-                        </div>
+                    <div class="mb-4">
+                        <label class="form-label" for="confirmPassword">Enter your password to confirm</label>
+                        <input type="password" id="confirmPassword" name="password" class="form-control" required placeholder="Your current password">
                     </div>
-
                     <div class="d-grid gap-2">
-                        <button type="button" class="btn btn-danger btn-lg shadow-sm" data-bs-toggle="modal" data-bs-target="#confirmModal">
-                            <i class="fas fa-trash-alt me-2"></i> Permanently Delete Account
-                        </button>
-                        <a href="{% url 'profile' %}" class="btn btn-light text-muted">
-                            Cancel, keep my account
-                        </a>
+                        <button type="submit" class="btn btn-danger btn-lg fw-bold"><i class="fas fa-trash-alt me-2"></i>Delete My Account</button>
+                        <a href="{% url 'profile' %}" class="btn btn-light text-muted">Cancel</a>
                     </div>
                 </form>
-            </div>
-        </div>
-    </div>
-</div>
-
-<div class="modal fade" id="confirmModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content border-0 shadow">
-            <div class="modal-header bg-danger text-white">
-                <h5 class="modal-title fw-bold">Final Warning</h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body text-center py-4">
-                <i class="fas fa-radiation text-danger fa-3x mb-3 opacity-50"></i>
-                <p class="fw-bold mb-1">Are you absolutely sure?</p>
-                <p class="text-muted small">This cannot be undone. Your data will be gone forever.</p>
-            </div>
-            <div class="modal-footer bg-light border-top-0">
-                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
-                
-                <button type="submit" form="deleteForm" class="btn btn-danger btn-sm px-4">
-                    Yes, Delete Everything
-                </button>
             </div>
         </div>
     </div>

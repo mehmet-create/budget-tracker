@@ -3,14 +3,18 @@ from django.contrib.auth import views as auth_views
 from . import views
 
 urlpatterns = [
-    path('', views.dashboard, name='dashboard'),#
+
+    path('health/', views.health, name='health'),
+    path('', views.home, name='home'),
+    path('dashboard/', views.dashboard, name='dashboard'),#
+    path('landing/', views.landing, name='landing'), 
     path('charts/', views.charts, name='charts'),#
 
     path('transactions/', views.transaction_list, name='transactions'),#
     path('transactions/add/', views.add_transaction, name='add_transaction'),#
     path('transaction/<int:pk>/edit/', views.edit_transaction, name='edit_transaction'),#
     path('transaction/delete/<int:pk>/', views.delete_transaction, name='delete_transaction'),#
-    path('tools/audit/', views.subscription_audit_view, name='subscription_audit'),
+    path('tools/audit/', views.subscription_audit_view, name='audit'),
     path('transactions/import/', views.import_transactions, name='import_csv'),
 
     path('goals/', views.goals_list, name='goals_list'),#

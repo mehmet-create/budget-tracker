@@ -5,14 +5,13 @@ from django.contrib.auth.password_validation import (
     CommonPasswordValidator,
     NumericPasswordValidator,
 )
-from django.core.exceptions import ValidationError
-from django.utils.translation import gettext as _
 from django.contrib.auth.models import User
 from django.contrib.auth import get_user_model
 from .models import BudgetGoal, Transaction
 from django import forms
 
 User = get_user_model()
+
 
 class SignUpForm(forms.ModelForm):
     password = forms.CharField(
@@ -23,7 +22,6 @@ class SignUpForm(forms.ModelForm):
         widget=forms.PasswordInput(attrs={"class": "form-control"}),
         label="Confirm Password"
     )
-
     first_name = forms.CharField(
         max_length=30,
         required=True,
@@ -51,17 +49,13 @@ class SignUpForm(forms.ModelForm):
     def clean_username(self):
         username = self.cleaned_data.get('username')
         if username:
-            existing_user = User.objects.filter(username__iexact=username).first()
-            
-            if existing_user:
-                if existing_user.is_active:
-                    raise forms.ValidationError("That username is already taken.")
-                else:
-                    existing_user.delete()
-                    
+            # only block if an ACTIVE user already has this username.
+            # Never delete accounts here — that belongs in the service layer
+            # with proper guards, not in form validation anyone can trigger.
+            if User.objects.filter(username__iexact=username, is_active=True).exists():
+                raise forms.ValidationError("That username is already taken.")
         return username
-    
-        
+
     def clean_first_name(self):
         first_name = self.cleaned_data.get('first_name')
         if any(char.isdigit() for char in first_name):
@@ -73,20 +67,16 @@ class SignUpForm(forms.ModelForm):
         if any(char.isdigit() for char in last_name):
             raise forms.ValidationError("Names should not contain numbers.")
         return last_name
-    
+
     def clean_email(self):
         email = self.cleaned_data.get('email')
         if email:
-            existing_user = User.objects.filter(email__iexact=email).first()
-            
-            if existing_user:
-                if existing_user.is_active:
-                    raise forms.ValidationError("That email address is already in use.")
-                else:
-                    existing_user.delete()
-                    
+            # only block if an ACTIVE user already has this email.
+            # Never delete accounts here — see clean_username note above.
+            if User.objects.filter(email__iexact=email, is_active=True).exists():
+                raise forms.ValidationError("That email address is already registered.")
         return email
-    
+
     def clean_password(self):
         password = self.cleaned_data.get("password")
         if not password:
@@ -101,9 +91,9 @@ class SignUpForm(forms.ModelForm):
 
         for validator in validators:
             validator.validate(password, user=self.instance)
-        
+
         return password
-    
+
     def clean(self):
         cleaned_data = super().clean()
         password = cleaned_data.get("password")
@@ -113,7 +103,7 @@ class SignUpForm(forms.ModelForm):
             self.add_error('confirm_password', "Passwords do not match.")
 
         return cleaned_data
-    
+
     def save(self, commit=True):
         user = super().save(commit=False)
         user.set_password(self.cleaned_data["password"])
@@ -122,26 +112,28 @@ class SignUpForm(forms.ModelForm):
         if commit:
             user.save()
         return user
-    
+
+
 class TransactionForm(forms.ModelForm):
     class Meta:
         model = Transaction
         fields = ['amount', 'category', 'type', 'date', 'description']
-        
         widgets = {
             'date': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
             'category': forms.Select(attrs={'class': 'form-select'}),
             'type': forms.Select(attrs={'class': 'form-select'}),
             'description': forms.Textarea(attrs={'rows': 3, 'class': 'form-control'}),
             'amount': forms.NumberInput(attrs={'class': 'form-control'}),
-        }    
+        }
+
+
 class BudgetGoalForm(forms.ModelForm):
     category = forms.ChoiceField(
         choices=[],
         label="Select Category",
         widget=forms.Select(attrs={'class': 'form-select'})
     )
-    
+
     class Meta:
         model = BudgetGoal
         fields = ['category', 'target_amount']
@@ -153,43 +145,31 @@ class BudgetGoalForm(forms.ModelForm):
                 'step': '0.01'
             }),
         }
-        
+
     def __init__(self, *args, user=None, **kwargs):
-        self.user = user 
+        self.user = user
         super().__init__(*args, **kwargs)
-        
+
         base_choices = dict(Transaction.CATEGORY_CHOICES)
-        
-
-        final_choices = []
-        for key, label in base_choices.items():
-            if key not in ['income', 'salary', 'deposit']: 
-                final_choices.append((key, label))
-        
+        final_choices = [
+            (key, label)
+            for key, label in base_choices.items()
+            if key not in ['income', 'salary', 'deposit']
+        ]
         final_choices.sort(key=lambda x: x[1])
-
         self.fields['category'].choices = [('', 'Select Category...')] + final_choices
 
     def clean_category(self):
         category = self.cleaned_data.get('category')
         valid_keys = [c[0] for c in Transaction.CATEGORY_CHOICES]
-        
         if category not in valid_keys:
             raise forms.ValidationError(f"'{category}' is not a valid category.")
-            
         return category
 
     def clean(self):
-        cleaned_data = super().clean()
-        category = cleaned_data.get('category')
-        
-        if self.user and category:
-            month = self.instance.month if self.instance.month else 0
-            year = self.instance.year if self.instance.year else 0
+        return super().clean()
 
-            pass 
 
-        return cleaned_data
 class ProfileUpdateForm(forms.ModelForm):
     username = forms.CharField(
         required=True,
@@ -203,25 +183,22 @@ class ProfileUpdateForm(forms.ModelForm):
         required=True,
         widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Last Name'})
     )
-    
+
     class Meta:
         model = User
         fields = ('username', 'first_name', 'last_name', 'email')
-        
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-
         for field_name in self.fields:
             self.fields[field_name].widget.attrs['class'] = 'form-control'
-        self.fields['username'].label = 'Username'
-        self.fields['first_name'].label = 'First Name'
-        self.fields['last_name'].label = 'Last Name'
+
 
 class CSVUploadForm(forms.Form):
     file = forms.FileField(
-        label="Select CSV File",
+        label="Select CSV or Excel File",
         widget=forms.FileInput(attrs={
             'class': 'form-control',
-            'accept': '.csv,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv'
+            'accept': '.csv,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv'
         })
     )

@@ -1,0 +1,193 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BudgetApp — Take Control of Your Money</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💰</text></svg>">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <style>
+        body { background: #f4f6fb; font-family: inherit; }
+
+        .hero {
+            background: linear-gradient(135deg, #0d6efd 0%, #0a58ca 100%);
+            color: #fff;
+            padding: 80px 0 60px;
+        }
+
+        .hero h1 { font-size: clamp(2rem, 5vw, 3rem); font-weight: 800; line-height: 1.15; }
+        .hero p  { font-size: 1.1rem; opacity: 0.85; max-width: 480px; }
+
+        .feature-card {
+            background: #fff;
+            border-radius: 12px;
+            padding: 28px 24px;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+            height: 100%;
+        }
+
+        .feature-icon {
+            width: 48px; height: 48px;
+            border-radius: 12px;
+            display: flex; align-items: center; justify-content: center;
+            margin-bottom: 16px;
+            font-size: 1.2rem;
+        }
+
+        .feature-card h6 { font-weight: 700; margin-bottom: 6px; }
+        .feature-card p  { color: #6c757d; font-size: 0.9rem; margin: 0; }
+
+        .cta-section {
+            background: #fff;
+            border-top: 1px solid #e9ecef;
+            padding: 60px 0;
+            text-align: center;
+        }
+
+        nav { box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+    </style>
+</head>
+<body>
+
+<!-- Navbar — matches app exactly -->
+<nav class="navbar navbar-expand-lg navbar-dark bg-primary sticky-top">
+    <div class="container">
+        <a class="navbar-brand fw-bold" href="#">
+            <i class="fas fa-wallet me-2"></i>BudgetApp
+        </a>
+        <div class="d-flex gap-2">
+            <a href="{% url 'login' %}" class="btn btn-outline-light btn-sm">Login</a>
+            <a href="{% url 'register' %}" class="btn btn-light text-primary btn-sm fw-semibold">Sign Up Free</a>
+        </div>
+    </div>
+</nav>
+
+<!-- Hero -->
+<section class="hero">
+    <div class="container">
+        <div class="row align-items-center g-5">
+            <div class="col-lg-6">
+                <h1 class="mb-4">Track your money.<br>Reach your goals.</h1>
+                <p class="mb-5">
+                    Log income and expenses, set monthly budgets, scan receipts with AI,
+                    and see where your money actually goes — built for Nigeria.
+                </p>
+                <div class="d-flex gap-3 flex-wrap">
+                    <a href="{% url 'register' %}" class="btn btn-light text-primary fw-bold px-4 py-2">
+                        Get Started Free
+                    </a>
+                    <a href="{% url 'login' %}" class="btn btn-outline-light px-4 py-2">
+                        Log In
+                    </a>
+                </div>
+            </div>
+            <div class="col-lg-6 d-none d-lg-block text-center">
+                <!-- Simple mock dashboard preview -->
+                <div class="bg-white rounded-3 p-4 shadow-lg" style="max-width:360px;margin:auto;">
+                    <div class="d-flex gap-2 mb-3">
+                        <div class="flex-fill rounded-2 p-3" style="background:#d1fae5;">
+                            <div style="font-size:0.65rem;font-weight:700;color:#065f46;text-transform:uppercase;letter-spacing:.05em;">Income</div>
+                            <div style="font-size:1.2rem;font-weight:800;color:#065f46;">₦320,000</div>
+                        </div>
+                        <div class="flex-fill rounded-2 p-3" style="background:#fee2e2;">
+                            <div style="font-size:0.65rem;font-weight:700;color:#991b1b;text-transform:uppercase;letter-spacing:.05em;">Expenses</div>
+                            <div style="font-size:1.2rem;font-weight:800;color:#991b1b;">₦185,000</div>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <div class="d-flex justify-content-between mb-1">
+                            <span style="font-size:0.85rem;font-weight:600;">Food &amp; Dining</span>
+                            <span class="badge bg-warning text-dark">72%</span>
+                        </div>
+                        <div class="progress" style="height:6px;">
+                            <div class="progress-bar bg-warning" style="width:72%"></div>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <div class="d-flex justify-content-between mb-1">
+                            <span style="font-size:0.85rem;font-weight:600;">Transport</span>
+                            <span class="badge bg-success">40%</span>
+                        </div>
+                        <div class="progress" style="height:6px;">
+                            <div class="progress-bar bg-success" style="width:40%"></div>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="d-flex justify-content-between mb-1">
+                            <span style="font-size:0.85rem;font-weight:600;">Bills &amp; Utilities</span>
+                            <span class="badge bg-danger">95%</span>
+                        </div>
+                        <div class="progress" style="height:6px;">
+                            <div class="progress-bar bg-danger" style="width:95%"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Features -->
+<section class="py-5">
+    <div class="container">
+        <div class="row g-4">
+            <div class="col-12 col-sm-6 col-lg-3">
+                <div class="feature-card">
+                    <div class="feature-icon" style="background:#dbeafe;color:#1d4ed8;">
+                        <i class="fas fa-chart-line"></i>
+                    </div>
+                    <h6>Track Everything</h6>
+                    <p>Log income and expenses by category. See your balance at a glance.</p>
+                </div>
+            </div>
+            <div class="col-12 col-sm-6 col-lg-3">
+                <div class="feature-card">
+                    <div class="feature-icon" style="background:#d1fae5;color:#065f46;">
+                        <i class="fas fa-bullseye"></i>
+                    </div>
+                    <h6>Monthly Budgets</h6>
+                    <p>Set spending limits per category and get warned before you overshoot.</p>
+                </div>
+            </div>
+            <div class="col-12 col-sm-6 col-lg-3">
+                <div class="feature-card">
+                    <div class="feature-icon" style="background:#fef3c7;color:#92400e;">
+                        <i class="fas fa-robot"></i>
+                    </div>
+                    <h6>AI Receipt Scan</h6>
+                    <p>Take a photo of any receipt and AI fills in the transaction for you.</p>
+                </div>
+            </div>
+            <div class="col-12 col-sm-6 col-lg-3">
+                <div class="feature-card">
+                    <div class="feature-icon" style="background:#ede9fe;color:#5b21b6;">
+                        <i class="fas fa-search"></i>
+                    </div>
+                    <h6>Spend Audit</h6>
+                    <p>Paste your bank statement and AI finds subscriptions you forgot about.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- CTA -->
+<section class="cta-section">
+    <div class="container">
+        <h2 class="fw-bold mb-3">Ready to take control?</h2>
+        <p class="text-muted mb-4">Free to use. No credit card required.</p>
+        <a href="{% url 'register' %}" class="btn btn-primary btn-lg px-5 fw-semibold">
+            Create Free Account
+        </a>
+    </div>
+</section>
+
+<footer class="bg-white text-center py-3 border-top">
+    <small class="text-muted">&copy; {% now "Y" %} BudgetApp</small>
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

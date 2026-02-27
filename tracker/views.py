@@ -4,8 +4,11 @@ import io
 import re
 import codecs
 import logging
+from .ai_services import audit_subscriptions_stream
+
 import os
 import uuid
+from .utils import send_async_email
 from datetime import datetime, timedelta
 from collections import defaultdict
 from decimal import Decimal
@@ -18,7 +21,7 @@ from django.contrib.auth.views import PasswordResetView
 from django.contrib.auth.forms import SetPasswordForm
 from django.contrib.auth import views as auth_views
 from django.contrib.auth.tokens import PasswordResetTokenGenerator
-from django.http import JsonResponse
+from django.http import JsonResponse, StreamingHttpResponse
 from django.utils import timezone
 from django.utils.encoding import force_str
 from django.utils.http import urlsafe_base64_decode
@@ -32,7 +35,6 @@ from django.db import transaction
 from .models import Transaction, BudgetGoal, UserProfile, BudgetLock
 from .forms import SignUpForm, BudgetGoalForm, ProfileUpdateForm, TransactionForm, CSVUploadForm
 from . import services, schemas
-from .tasks import send_email_task, import_transactions_task
 from .ratelimit import check_ratelimit, RateLimitError
 from .ai_services import scan_receipt
 from .ai_services import audit_subscriptions
@@ -55,13 +57,14 @@ def is_json_request(request):
     accept = request.headers.get('Accept', '')
     return 'application/json' in accept and 'text/html' not in accept
 
+
 def login_view(request):
     ip = get_ip(request)
     username = request.POST.get('username', '').strip()
-
+    
     # Composite key: Blocks "IP + Username" pair
     ratelimit_key = f"login_fail_{ip}_{username}" if username else f"login_fail_{ip}"
-
+    
     try:
         check_ratelimit(ratelimit_key, limit=10, period=60)
     except RateLimitError as e:
@@ -80,7 +83,7 @@ def login_view(request):
         if status == "success":
             login(request, user)
             cache.delete(f"ratelimit:{ratelimit_key}")
-
+            
             if is_json_request(request):
                 return JsonResponse({'status': 'success', 'user': user.username})
             return redirect('dashboard')
@@ -89,19 +92,19 @@ def login_view(request):
             current_history = cache.get(f"ratelimit:{ratelimit_key}", [])
             attempts_used = len(current_history)
             remaining = 10 - attempts_used
-
+            
             error_msg = "Invalid credentials."
             if status == "unverified":
                 error_msg = "Account not verified."
-
+            
             if remaining <= 3 and remaining > 0:
                 error_msg += f" Warning: {remaining} attempts remaining."
-
+            
             if is_json_request(request):
                 return JsonResponse({'status': 'error', 'code': status, 'message': error_msg}, status=401)
 
             messages.error(request, error_msg)
-
+            
             if status == "unverified":
                 request.session['unverified_user_id'] = user.id
                 return redirect('verify_registration')
@@ -127,9 +130,9 @@ def register_view(request):
                 return JsonResponse({'status': 'error', 'message': 'Invalid JSON'}, status=400)
         else:
             data = request.POST
-
+        
         form = SignUpForm(data)
-
+        
         if form.is_valid():
             try:
                 dto = schemas.RegisterDTO(
@@ -139,10 +142,10 @@ def register_view(request):
                     first_name=form.cleaned_data.get('first_name', ''),
                     last_name=form.cleaned_data.get('last_name', '')
                 )
-
+                
                 user, code = services.register_user(dto)
-
-                send_email_task.delay(user.email, "Verification Code", f"Your code: {code}")
+                
+                send_async_email(user.email, "Verification Code", f"Your code: {code}")
                 request.session['unverified_user_id'] = user.id
 
                 if is_json_request(request):
@@ -176,7 +179,7 @@ def register_view(request):
                 'method': 'POST'
             })
         form = SignUpForm()
-
+    
     return render(request, 'tracker/register.html', {'form': form})
 
 
@@ -190,7 +193,7 @@ def verify_registration(request):
         messages.error(request, str(e))
         return redirect('register')
     user_id = request.session.get('unverified_user_id')
-
+    
     if not user_id:
         if is_json_request(request):
             return JsonResponse({
@@ -204,10 +207,10 @@ def verify_registration(request):
         user_email = user_obj.email
     except User.DoesNotExist:
         request.session.flush()
-
+        
         if is_json_request(request):
             return JsonResponse({'status': 'error', 'message': 'User not found. Register again.'}, status=404)
-
+            
         return redirect('register')
 
     if request.method == 'POST':
@@ -243,12 +246,12 @@ def verify_registration(request):
 @require_http_methods(["GET", "POST"])
 def resend_code(request):
     user_id = request.session.get('unverified_user_id')
-
+    
     if not user_id:
         if is_json_request(request): 
             return JsonResponse({'status': 'error', 'message': 'Session expired. Register again.'}, status=401)
         return redirect('register')
-
+    
     if request.method == "GET" and is_json_request(request):
         return JsonResponse({'status': 'ready', 'message': 'Send POST to resend code.'})
 
@@ -264,27 +267,27 @@ def resend_code(request):
         dto = schemas.ResendCodeDTO(user_id=user_id)
         # Sync Service Call
         success, code, email = services.resend_code(dto)
-        send_email_task.delay(email, "New Code", f"Your code: {code}")
+        send_async_email(email, "New Code", f"Your code: {code}")
 
         cache.set(cache_key, True, 60)
-
+        
         if is_json_request(request): 
             return JsonResponse({'status': 'success', 'message': 'Code resent'})
-
+        
         messages.success(request, "Code resent.")
-
+        
     except Exception as e:
         if is_json_request(request): 
             return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
         messages.error(request, str(e))
-
+        
     return redirect('verify_registration')
 
 
 @require_http_methods(["GET", "POST"])
 def verify_email_change(request):
     user = request.user
-
+    
     if not user.is_authenticated:
         if is_json_request(request): 
             return JsonResponse({'status': 'error', 'message': 'Unauthorized'}, status=401)
@@ -305,11 +308,11 @@ def verify_email_change(request):
         try:
             dto = schemas.VerifyEmailChangeDTO(user_id=user.id, code=code)
             success, msg = services.verify_email_change(dto)
-
+            
             if success:
                 if is_json_request(request):
                     return JsonResponse({'status': 'success', 'message': msg})
-
+            
                 messages.success(request, msg)
                 return redirect('profile')
             else:
@@ -335,7 +338,7 @@ def verify_email_change(request):
 @require_http_methods(["GET", "POST"])
 def password_change_view(request):
     user = request.user
-
+    
     if not user.is_authenticated:
         if is_json_request(request): 
             return JsonResponse({'status': 'error', 'message': 'Unauthorized'}, status=401)
@@ -362,13 +365,13 @@ def password_change_view(request):
             success, msg = services.change_password(user, dto)
             if success:
                 update_session_auth_hash(request, user)
-
+                
                 if is_json_request(request): 
                     return JsonResponse({'status': 'success', 'message': msg})
-
+                
                 messages.success(request, msg)
                 return redirect('password_change_done')
-
+            
             else:
                 raise ValueError(msg)
         except ValueError as e:
@@ -388,7 +391,7 @@ def password_change_view(request):
 @require_http_methods(["GET", "POST", "DELETE"])
 def delete_account_view(request):
     user = request.user
-
+    
     if not user.is_authenticated:
         if is_json_request(request): 
             return JsonResponse({'status': 'error', 'message': 'Unauthorized'}, status=401)
@@ -399,13 +402,13 @@ def delete_account_view(request):
             dto = schemas.DeleteAccountDTO(user_id=user.id, password=request.POST.get('password'))
             services.delete_account(dto)
             logout(request)
-
+            
             if is_json_request(request): 
                 return JsonResponse({'status': 'success', 'message': 'Account deleted'})
-
+            
             messages.info(request, "Account deleted.")
             return redirect('register')
-
+            
         except Exception as e:
             if is_json_request(request): 
                 return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
@@ -466,7 +469,7 @@ class CustomPasswordResetView(PasswordResetView):
                 'status': 'error',
                 'errors': form.errors
             }, status=400)
-
+            
         return super().form_invalid(form)
 
 class CustomPasswordResetDoneView(auth_views.PasswordResetDoneView):
@@ -507,7 +510,7 @@ class CustomPasswordResetConfirmView(auth_views.PasswordResetConfirmView):
                     'status': 'error', 
                     'message': 'The password reset link is invalid or has expired.'
                 }, status=400)
-
+        
         # 2. Proceed with standard Django logic
         # This will call get_form(), form_valid(), or form_invalid()
         return super().post(request, *args, **kwargs)
@@ -590,9 +593,9 @@ def dashboard(request):
     now = timezone.now()
     current_month = now.month
     current_year = now.year
-
+    
     goals = BudgetGoal.objects.filter(user=user, month=current_month, year=current_year)
-
+    
 
     expense_qs = Transaction.objects.filter(
         user=user, 
@@ -600,17 +603,18 @@ def dashboard(request):
         date__month=current_month, 
         date__year=current_year
     ).values('category').annotate(total=Sum('amount'))
-
+    
     expense_map = {i['category']: i['total'] for i in expense_qs}
 
     goal_progress = []
     for goal in goals:
         spent = expense_map.get(goal.category, Decimal('0.00'))
         target = goal.target_amount
-
-        goal.spent = spent
-        goal.target = target 
-
+        
+        goal.actual_spent = spent
+        goal.progress_percent = (spent / target) * 100 if target > 0 else 0
+        goal.remaining = target - spent
+        
         if target > 0:
             goal.percent = min(int((spent / target) * 100), 100)
             real_percent = (spent / target) * 100 
@@ -624,7 +628,7 @@ def dashboard(request):
             goal.status = 'warning'
         else:
             goal.status = 'good'
-
+            
         goal_progress.append(goal)
 
     recent_transactions = Transaction.objects.filter(user=user).order_by('-date', '-id')[:5]
@@ -634,7 +638,7 @@ def dashboard(request):
         income=Sum('amount', filter=Q(type__iexact='Income')),
         expense=Sum('amount', filter=Q(type__iexact='Expense'))
     )
-
+    
     total_income = totals['income'] or Decimal('0.00')
     total_expense = totals['expense'] or Decimal('0.00')
     balance = total_income - total_expense
@@ -647,9 +651,9 @@ def dashboard(request):
             'percent': g.percent,
             'status': g.status
         } for g in goal_progress]
-
+        
         json_trans = list(recent_transactions.values('id', 'amount', 'type', 'category', 'date'))
-
+        
         return JsonResponse({
             'status': 'success',
             'data': {
@@ -663,16 +667,25 @@ def dashboard(request):
         })
 
     context = {
-        'transactions': recent_transactions,
-        'goal_progress': goal_progress,
+        'recent_transactions': recent_transactions,
+        'goals': goal_progress,
         'total_income': total_income,
         'total_expense': total_expense,
         'balance': balance,
-        'current_month_name': now.strftime('%B'), 
-        'current_year': current_year,
+        'current_month': now,
     }
 
     return render(request, "tracker/dashboard.html", context)
+
+def home(request):
+    if request.user.is_authenticated:
+        return redirect('dashboard')
+    return render(request, 'tracker/landing.html')
+
+def landing(request):
+    if request.user.is_authenticated:
+        return redirect('dashboard')
+    return render(request, 'tracker/landing.html')
 
 @require_GET
 def transaction_list(request):
@@ -681,7 +694,7 @@ def transaction_list(request):
         if is_json_request(request): 
             return JsonResponse({'status': 'error', 'message': 'Unauthorized'}, status=401)
         return redirect('login')
-
+    
     all_transactions = Transaction.objects.filter(user=user).order_by('-date', '-id')
 
     query = request.GET.get('q') 
@@ -724,7 +737,7 @@ def transaction_list(request):
         transactions_data = list(transactions_page.object_list.values(
             'id', 'date', 'description', 'amount', 'category', 'type'
         ))
-
+        
         return JsonResponse({
             'status': 'success',
             'data': {
@@ -798,12 +811,12 @@ def add_transaction(request):
                 date=form.cleaned_data['date'],
                 description=form.cleaned_data.get('description', ''),
             )
-
+            
             services.create_transaction(dto)
 
             if is_json_request(request): 
                 return JsonResponse({'status': 'success', 'message': 'Transaction added'}, status=201)
-
+            
             messages.success(request, "Transaction added successfully!")
             return redirect('transactions')
 
@@ -813,7 +826,7 @@ def add_transaction(request):
 
     if is_json_request(request): 
         return JsonResponse({'status': 'error', 'errors': form.errors}, status=400)
-
+    
     messages.error(request, "Please correct the errors below.")
     return render(request, 'tracker/add_transaction.html', {'form': form})
 
@@ -842,13 +855,13 @@ def edit_transaction(request, pk):
                 date=form.cleaned_data['date'],
                 description=form.cleaned_data.get('description', '')
             )
-
+            
             services.update_transaction(pk, dto)
-
+            
             if is_json_request(request): return JsonResponse({'status': 'success', 'message': 'Updated'})
             messages.success(request, 'Transaction updated.')
             return redirect("transactions")
-
+        
         else:
             if is_json_request(request): return JsonResponse({'status': 'error', 'errors': form.errors}, status=400)
             messages.error(request, "Please correct errors.")
@@ -865,7 +878,7 @@ def delete_transaction(request, pk):
     if not user.is_authenticated:
         if is_json_request(request): return JsonResponse({'status': 'error', 'message': 'Unauthorized'}, status=401)
         return redirect('login')
-
+    
     if request.method in ["DELETE", "POST"]:
         try:
             services.delete_transaction(pk, user.id)
@@ -883,30 +896,27 @@ def delete_transaction(request, pk):
 
     if is_json_request(request):
         return JsonResponse({'status': 'warning', 'message': 'Send DELETE/POST to confirm.'})
-
+        
     return render(request, 'tracker/delete_confirm.html', {'transaction': transaction})
 
 def validate_file_extension(filename):
     if not filename.endswith(('.xlsx', '.csv')):
         raise ValueError("Invalid file type. Only .xlsx and .csv allowed.")
-
+    
 @login_required
 @require_http_methods(["GET", "POST"])
 def subscription_audit_view(request):
-    audit_results = None
-    user = request.user
-    if not user.is_authenticated:
-        if is_json_request(request): return JsonResponse({'status': 'error', 'message': 'Unauthorized'}, status=401)
-        return redirect('login')
-    if request.method == "POST":
-        raw_data = request.POST.get('transactions')
-        if raw_data:
-            if len(raw_data) > 50000: 
-                return JsonResponse({'error': 'Payload too large'}, status=413)
-            audit_results = audit_subscriptions(raw_data)
-            if is_json_request(request):
-                return JsonResponse({'status': 'success', 'data': audit_results})    
-    return render(request, 'tracker/audit.html', {'results': audit_results})
+    results = None
+    if request.method == 'POST':
+        transaction_text = request.POST.get('transactions', '').strip()
+        start_date = request.POST.get('start_date', '')
+        end_date = request.POST.get('end_date', '')
+
+        if transaction_text:
+            from .ai_services import audit_subscriptions
+            results = audit_subscriptions(transaction_text, start_date, end_date)
+
+    return render(request, 'tracker/audit.html', {'results': results})
 
 @require_GET
 def charts(request):
@@ -916,7 +926,7 @@ def charts(request):
         return redirect('login')
 
     transactions = list(Transaction.objects.filter(user=user))
-
+    
     total_income = 0.0
     total_expense = 0.0
     category_totals = defaultdict(float)
@@ -931,9 +941,11 @@ def charts(request):
         except: continue
 
     balance = total_income - total_expense
+    category_label_map = dict(Transaction.CATEGORY_CHOICES)
+    category_labels = [category_label_map.get(key, key) for key in category_totals.keys()]
     context = {
         "total_income": total_income, "total_expense": total_expense, "balance": balance,
-        "category_labels": list(category_totals.keys()),
+        "category_labels": category_labels,
         "category_values": list(category_totals.values()),
     }
     if is_json_request(request): return JsonResponse({'status': 'success', 'data': context})
@@ -944,39 +956,36 @@ def charts(request):
 def import_transactions(request):
     try:
         if 'file' not in request.FILES:
-             raise ValueError("No file uploaded.")
+            raise ValueError("No file uploaded.")
 
         uploaded_file = request.FILES['file']
 
-        # DTO handles validation (Size, Extension)
-        schemas.ImportTransactionsDTO(
+        # DTO validates size and extension
+        dto = schemas.ImportTransactionsDTO(
             user_id=request.user.id,
             file=uploaded_file
         )
 
-        safe_name = os.path.basename(uploaded_file.name)
-        storage_path = default_storage.save(
-            f"imports/{request.user.id}/{uuid.uuid4().hex}_{safe_name}",
-            uploaded_file
-        )
+        # Call service directly — no Celery needed
+        count = services.import_transactions_service(dto)
 
-        import_transactions_task.delay(request.user.id, storage_path)
-
+        msg = f"Successfully imported {count} transaction{'s' if count != 1 else ''}."
         if is_json_request(request):
-            return JsonResponse({'status': 'accepted', 'message': 'Upload received. Processing started.'}, status=202)
-        messages.success(request, "Upload received. Processing started.")
+            return JsonResponse({'status': 'ok', 'message': msg, 'count': count})
+        messages.success(request, msg)
 
     except ValueError as e:
         if is_json_request(request):
             return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
         messages.error(request, str(e))
+
     except Exception as e:
         if is_json_request(request):
             return JsonResponse({'status': 'error', 'message': 'An error occurred during import.'}, status=500)
-        messages.error(request, "An error occurred during import.")
+        messages.error(request, "An error occurred during import. Check the file format and try again.")
 
     return redirect('transactions')
-
+        
 @require_GET
 def goals_list(request, year=None, month=None):
     user = request.user
@@ -986,9 +995,9 @@ def goals_list(request, year=None, month=None):
         return redirect('login')
 
     now = timezone.now()
-
+    
     form = BudgetGoalForm(user=user) 
-
+    
     try:
         view_month = int(month or request.GET.get('month') or now.month)
         view_year = int(year or request.GET.get('year') or now.year)
@@ -999,7 +1008,7 @@ def goals_list(request, year=None, month=None):
     current_goals = list(
         BudgetGoal.objects.filter(user=user, year=view_year, month=view_month).order_by('category')
     )
-
+    
     is_history = (view_year < now.year) or (view_year == now.year and view_month < now.month)
     can_import = not is_history and not current_goals
 
@@ -1012,23 +1021,23 @@ def goals_list(request, year=None, month=None):
             date__month=view_month
         ).values('category').annotate(total=Sum('amount'))
     )
-
+    
     expense_map = {item['category']: item['total'] for item in expense_totals}
 
     goals_data = []
     for goal in current_goals:
         spent = expense_map.get(goal.category, Decimal('0.00'))
-
+        
         goal.actual_spent = spent
         goal.remaining = goal.target_amount - spent
-
+        
         if goal.target_amount > 0:
             goal.progress_percent = min((float(spent) / float(goal.target_amount)) * 100, 100)
         else:
             goal.progress_percent = 0
-
+            
         goal.is_over_budget = goal.remaining < 0
-
+        
         goals_data.append({
             'id': goal.id, 
             'category': goal.get_category_display(),
@@ -1080,7 +1089,7 @@ def set_goals(request):
                     'year': goal.year
                 }
             })
-
+        
         messages.success(request, f"Goal set for {dto.month}/{dto.year}.")
         return redirect(f'/goals/?month={dto.month}&year={dto.year}')
 
@@ -1112,7 +1121,7 @@ def edit_goal(request, pk):
                 target_amount=form.cleaned_data['target_amount']
             )
             services.update_goal(dto)
-
+            
             if is_json_request(request): return JsonResponse({'status': 'success'})
             messages.success(request, "Goal updated.")
             return redirect('goals_list')
@@ -1136,7 +1145,7 @@ def delete_goal(request, pk):
 
     if request.method in ["POST", "DELETE"]:
         goal.delete()
-
+        
         if is_json_request(request): return JsonResponse({'status': 'deleted'})
         messages.success(request, "Goal deleted.")
         return redirect('goals_list')
@@ -1162,9 +1171,9 @@ def clear_monthly_goals(request, year, month):
         if is_json_request(request): return JsonResponse({'status': 'error', 'message': 'Cannot clear past goals.'}, status=403)
         messages.warning(request, "Cannot clear past goals.")
         return redirect(reverse('goals_list') + f"?year={year}&month={month}")
-
+    
     count, _ = BudgetGoal.objects.filter(user=user, year=year, month=month).delete()
-
+    
     BudgetLock.objects.get_or_create(user=user, year=year, month=month)
 
     if is_json_request(request): return JsonResponse({'status': 'success', 'deleted': count})
@@ -1187,11 +1196,11 @@ def import_previous_goals(request):
             target_month=month,
             target_year=year
         )
-
+        
         services.import_previous_goals(dto)
-
+        
         messages.success(request, "Goals imported successfully.")
-
+        
     except (ValueError, services.ServiceError) as e:
         messages.warning(request, str(e))
 
@@ -1210,6 +1219,9 @@ def change_currency(request):
             currency_code=request.POST.get('currency_code', '')
         )
         services.update_currency(dto)
+        
+        # Clear session cache so the new currency symbol is used
+        request.session.pop('currency_symbol', None)
 
         if is_json_request(request):
             return JsonResponse({
@@ -1219,12 +1231,12 @@ def change_currency(request):
             })
 
         messages.success(request, f"Currency changed to {dto.currency_code}")
-
+        
     except ValueError as e:
         if is_json_request(request):
             return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
         messages.error(request, str(e))
-
+        
     return redirect(request.META.get('HTTP_REFERER', 'dashboard'))
 
 
@@ -1257,16 +1269,16 @@ def resend_verification_code_profile(request):
             <p>You requested a new verification code.</p>
             <p>Your code is: <strong>{raw_code}</strong></p>
         """
-        send_email_task.delay(email_to, "Your New Code", html_content)
+        send_async_email(email_to, "Your New Code", html_content)
 
         cache.set(cache_key, True, 60)
 
         if is_json_request(request): return JsonResponse({'status': 'success', 'message': 'Code resent'})
         messages.success(request, f"New code sent to {email_to}")
-
+        
     except UserProfile.DoesNotExist:
         messages.error(request, "Profile not found.")
-
+        
     return redirect('verify_email_change')
 
 @require_http_methods(["GET", "POST"])
@@ -1297,7 +1309,7 @@ def profile_settings(request):
 
                 raw_code = services.request_email_change(dto)
 
-                send_email_task.delay(
+                send_async_email(
                     dto.new_email, 
                     "Email Change Verification", 
                     f"Your verification code is: {raw_code}"
@@ -1325,10 +1337,10 @@ def profile_settings(request):
             post_data['email'] = user.email
 
             form = ProfileUpdateForm(post_data, instance=user)
-
+            
             if form.is_valid():
                 form.save()
-
+                
                 if is_json_request(request): 
                     user_profile = user.userprofile
                     return JsonResponse({
@@ -1341,7 +1353,7 @@ def profile_settings(request):
                             'currency': user_profile.currency_code
                         }
                     })
-
+                
                 messages.success(request, 'Profile updated.')
             else:
                 if is_json_request(request):

@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
 import os
+import ssl
 from pathlib import Path
 import dj_database_url
 from dotenv import load_dotenv
@@ -47,7 +48,7 @@ if not DEBUG:
     SECURE_SSL_REDIRECT = True
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
-    SECURE_HSTS_SECONDS = 31536000  # 1 year
+    SECURE_HSTS_SECONDS = 31536000
     SECURE_HSTS_INCLUDE_SUBDOMAINS = True
     SECURE_HSTS_PRELOAD = True
     SECURE_BROWSER_XSS_FILTER = True
@@ -106,12 +107,9 @@ DATABASES = {
         default=os.getenv('DATABASE_URL', 'sqlite:///db.sqlite3'),
         conn_max_age=600,
         conn_health_checks=True,
-        
-        # Only require SSL if DEBUG is False (Online)
-        ssl_require=(not DEBUG) 
+        ssl_require=(not DEBUG)
     )
 }
-
 DATABASES['default']['ATOMIC_REQUESTS'] = False
 
 
@@ -123,7 +121,7 @@ if DEBUG:
     EMAIL_USE_TLS = True
     EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER')
     EMAIL_HOST_PASSWORD = os.environ.get('GMAIL_APP_PASSWORD')
-    DEFAULT_FROM_EMAIL = f"BudgetApp Support <{os.environ.get('EMAIL_HOST_USER')}>"
+    DEFAULT_FROM_EMAIL = f"BudgetApp <{os.environ.get('EMAIL_HOST_USER')}>"
 
 else:
     # PRODUCTION (ONLINE) SETTINGS: RESEND
@@ -133,8 +131,9 @@ else:
     EMAIL_USE_TLS = True
     EMAIL_HOST_USER = 'resend'
     EMAIL_HOST_PASSWORD = os.environ.get('RESEND_API_KEY')
-    DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL') # Or your verified domain
+    DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL', 'onboarding@resend.dev') # Or your verified domain
 
+RESEND_API_KEY = os.environ.get('RESEND_API_KEY')
 
 AUTH_PASSWORD_VALIDATORS = [
     {
@@ -186,38 +185,6 @@ AVAILABLE_CURRENCIES = {
     'GBP': '£',
 }
 
-
-REDIS_URL = os.getenv('REDIS_URL', 'redis://127.0.0.1:6379/0')
-
-# Fix for Celery: rediss:// URLs MUST have ssl_cert_reqs defined
-# If it's a secure "rediss://" URL (like Upstash), we need SSL settings.
-# If it's a normal "redis://" URL (like Docker), we don't.
-if REDIS_URL.startswith('rediss://'):
-    ssl_conf = {'ssl_cert_reqs': 'none'}
-    CELERY_BROKER_URL = f"{REDIS_URL}?ssl_cert_reqs=none"
-    CELERY_RESULT_BACKEND = f"{REDIS_URL}?ssl_cert_reqs=none"
-else:
-    ssl_conf = {}
-    CELERY_BROKER_URL = REDIS_URL
-    CELERY_RESULT_BACKEND = REDIS_URL
-
-CELERY_TASK_ALWAYS_EAGER = False 
-CELERY_ACCEPT_CONTENT = ['json']
-CELERY_TASK_SERIALIZER = 'json'
-
-# CACHING
-CACHES = {
-    "default": {
-        "BACKEND": "django_redis.cache.RedisCache",
-        "LOCATION": CELERY_BROKER_URL,
-        "OPTIONS": {
-            "CLIENT_CLASS": "django_redis.client.DefaultClient",
-            "CONNECTION_POOL_KWARGS": ssl_conf
-        }
-    }
-}
-
-
 # LOGIN/LOGOUT REDIRECTS
 LOGIN_REDIRECT_URL = 'dashboard' 
 LOGOUT_REDIRECT_URL = 'login'
@@ -226,3 +193,4 @@ LOGIN_URL = 'login'
 # ERROR HANDLERS
 CSRF_FAILURE_VIEW = 'tracker.views.csrf_failure_json'
 GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY')
+

@@ -1,103 +1,83 @@
 {% extends 'tracker/base.html' %}
-
-{% block title %}Account Settings{% endblock %}
-
+{% block title %}Settings — BudgetApp{% endblock %}
 {% block content %}
 <div class="row justify-content-center">
-    <div class="col-lg-8">
-        
+    <div class="col-12 col-lg-8 col-xl-7">
         <div class="mb-4">
             <h2 class="fw-bold">Account Settings</h2>
-            <p class="text-muted">Manage your profile information and security.</p>
+            <p class="text-muted small">Manage your profile and security preferences.</p>
         </div>
 
-        <div class="card border-0 shadow-sm mb-4">
-            <div class="card-header bg-white py-3 border-bottom-0">
-                <h5 class="mb-0 fw-bold text-primary"><i class="fas fa-user-edit me-2"></i>Public Profile</h5>
+        <!-- Profile -->
+        <div class="card mb-4">
+            <div class="card-header bg-white py-3">
+                <h5 class="mb-0 fw-bold small text-primary"><i class="fas fa-user-edit me-2"></i>Profile</h5>
             </div>
-            <div class="card-body p-4">
+            <div class="card-body p-3 p-md-4">
                 <form method="POST">
                     {% csrf_token %}
-                    
                     <div class="mb-3">
-                        <label class="form-label small fw-bold text-muted text-uppercase" for="{{ form.username.id_for_label }}">Username</label>
+                        <label class="form-label" for="{{ form.username.id_for_label }}">Username</label>
                         {{ form.username }}
-                        {% if form.username.errors %}
-                            <div class="text-danger small mt-1">{{ form.username.errors.0 }}</div>
-                        {% endif %}
+                        {% if form.username.errors %}<div class="text-danger small mt-1">{{ form.username.errors.0 }}</div>{% endif %}
                     </div>
-
-                    <div class="row g-3 mb-3">
-                        <div class="col-md-6">
-                            <label class="form-label small fw-bold text-muted text-uppercase" for="{{ form.first_name.id_for_label }}">First Name</label>
+                    <div class="row g-2 mb-3">
+                        <div class="col-6">
+                            <label class="form-label" for="{{ form.first_name.id_for_label }}">First Name</label>
                             {{ form.first_name }}
                         </div>
-                        <div class="col-md-6">
-                            <label class="form-label small fw-bold text-muted text-uppercase" for="{{ form.last_name.id_for_label }}">Last Name</label>
+                        <div class="col-6">
+                            <label class="form-label" for="{{ form.last_name.id_for_label }}">Last Name</label>
                             {{ form.last_name }}
                         </div>
                     </div>
-
                     <div class="mb-4">
-                        <label class="form-label small fw-bold text-muted text-uppercase" for="currentEmail">Current Email</label>
-                        
-                        <input type="text" id="currentEmail" class="form-control bg-light" name="email" value="{{ user.email }}" readonly>
-                        
-                        <small class="text-muted">To change your email, use the Security section below.</small>
+                        <label class="form-label">Current Email</label>
+                        <input type="text" class="form-control bg-light" value="{{ user.email }}" readonly>
+                        <div class="form-text">Change your email in the Security section below.</div>
                     </div>
-
-                    <div class="d-flex justify-content-end">
-                        <button type="submit" class="btn btn-primary">
-                            <i class="fas fa-save me-2"></i> Save Profile
-                        </button>
+                    <div class="d-grid d-md-flex justify-content-md-end">
+                        <button type="submit" class="btn btn-primary"><i class="fas fa-save me-2"></i>Save Profile</button>
                     </div>
                 </form>
             </div>
         </div>
 
-        <div class="card border-0 shadow-sm mb-4">
-            <div class="card-header bg-white py-3 border-bottom-0">
-                <h5 class="mb-0 fw-bold text-warning"><i class="fas fa-shield-alt me-2"></i>Security & Login</h5>
+        <!-- Security -->
+        <div class="card mb-4">
+            <div class="card-header bg-white py-3">
+                <h5 class="mb-0 fw-bold small text-warning"><i class="fas fa-shield-alt me-2"></i>Security &amp; Login</h5>
             </div>
-            <div class="card-body p-4">
-                
+            <div class="card-body p-3 p-md-4">
                 <div class="mb-4 pb-4 border-bottom">
-                    <label class="form-label fw-bold" for="newEmail">Change Email Address</label>
-                    <p class="small text-muted mb-2">We will send a verification code to the new address.</p>
-                    
-                    <form method="POST" class="d-flex gap-2">
+                    <label class="form-label fw-bold small mb-1">Change Email Address</label>
+                    <p class="text-muted small mb-2">We'll send a verification code to the new address.</p>
+                    <form method="POST" class="d-flex flex-column flex-sm-row gap-2">
                         {% csrf_token %}
-                        <input type="email" id="newEmail" name="email" class="form-control" placeholder="Enter new email address" required>
-                        <button type="submit" name="request_email_change" class="btn btn-outline-warning text-nowrap">
-                            Verify & Update
-                        </button>
+                        <input type="email" name="email" class="form-control" placeholder="New email address" required>
+                        <button type="submit" name="request_email_change" class="btn btn-outline-warning text-nowrap">Verify &amp; Update</button>
                     </form>
                 </div>
-
-                <div class="d-flex justify-content-between align-items-center">
+                <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
                     <div>
-                        <h6 class="fw-bold mb-1">Password</h6>
-                        <p class="small text-muted mb-0">Update your password regularly to keep your account secure.</p>
+                        <h6 class="fw-bold mb-1 small">Password</h6>
+                        <p class="text-muted small mb-0">Keep your account secure with a strong password.</p>
                     </div>
-                    <a href="{% url 'password_change' %}" class="btn btn-outline-secondary">
-                        Change Password
-                    </a>
+                    <a href="{% url 'password_change' %}" class="btn btn-outline-secondary btn-sm">Change Password</a>
                 </div>
             </div>
         </div>
 
-        <div class="card border-danger border-1 shadow-sm bg-white">
-            <div class="card-body p-4 d-flex justify-content-between align-items-center">
+        <!-- Danger -->
+        <div class="card danger-card">
+            <div class="card-body p-3 p-md-4 d-flex justify-content-between align-items-center flex-wrap gap-3">
                 <div>
-                    <h6 class="fw-bold text-danger mb-1">Delete Account</h6>
-                    <p class="small text-muted mb-0">Permanently delete your account and all data.</p>
+                    <h6 class="fw-bold text-danger mb-1 small">Delete Account</h6>
+                    <p class="text-muted small mb-0">Permanently delete your account and all data.</p>
                 </div>
-                <a href="{% url 'delete_account' %}" class="btn btn-danger btn-sm">
-                    Delete Account
-                </a>
+                <a href="{% url 'delete_account' %}" class="btn btn-danger btn-sm">Delete Account</a>
             </div>
         </div>
-
     </div>
 </div>
 {% endblock %}
