@@ -193,4 +193,4 @@ LOGIN_URL = 'login'
 # ERROR HANDLERS
 CSRF_FAILURE_VIEW = 'tracker.views.csrf_failure_json'
 GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY')
-
+GROQ_API_KEY = os.environ.get('GROQ_API_KEY')

@@ -17,7 +17,6 @@
         <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#importModal">
             <i class="fas fa-file-import me-1"></i><span class="d-none d-sm-inline">Import</span>
         </button>
-        <!-- Opens the global modal from base.html — same as navbar Add button -->
         <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addTxnModal">
             <i class="fas fa-plus me-1"></i>Add
         </button>
@@ -50,12 +49,12 @@
                                value="{{ current_start_date|default_if_none:'' }}">
                     </div>
                     <div class="col-6 col-md-2">
-                        <label class="form-label">To</label>
+                        <label class="form-label">To <span class="text-muted small fw-normal">(today if blank)</span></label>
                         <input type="date" class="form-control" name="end_date"
                                value="{{ current_end_date|default_if_none:'' }}">
                     </div>
                     <div class="col-12 col-md-2 d-flex align-items-end gap-2">
-                        <button type="submit" class="btn btn-primary flex-fill">Apply</button>
+                        <button type="submit" class="btn btn-primary flex-fill" data-no-loading>Apply</button>
                         <a href="{% url 'transactions' %}" class="btn btn-outline-secondary flex-fill">Reset</a>
                     </div>
                 </div>
@@ -64,7 +63,7 @@
     </div>
 </div>
 
-<!-- Summary Stats -->
+<!-- Summary -->
 <div class="row g-3 mb-4">
     <div class="col-4">
         <div class="card border-start border-4 border-success h-100">
@@ -116,9 +115,7 @@
                 <tr>
                     <td class="ps-4 text-muted fw-semibold">{{ t.date|date:"M d, Y" }}</td>
                     <td>
-                        <span class="badge {% if t.type == 'Income' %}bg-success{% else %}bg-danger{% endif %}">
-                            {{ t.type }}
-                        </span>
+                        <span class="badge {% if t.type == 'Income' %}bg-success{% else %}bg-danger{% endif %}">{{ t.type }}</span>
                     </td>
                     <td class="fw-semibold">{{ t.get_category_display }}</td>
                     <td class="text-muted">{{ t.description|default:"—"|truncatechars:45 }}</td>
@@ -126,12 +123,14 @@
                         {% if t.type == 'Income' %}+{% else %}-{% endif %}{% currency t.amount %}
                     </td>
                     <td class="text-end pe-4">
-                        <a href="{% url 'edit_transaction' pk=t.pk %}" class="btn btn-sm btn-outline-secondary me-1">
+                        <button type="button" class="btn btn-sm btn-outline-secondary me-1"
+                                onclick="openEditTxn({{ t.pk }},'{{ t.type }}','{{ t.category }}','{{ t.amount }}','{{ t.date|date:"Y-m-d" }}','{{ t.description|default:""|escapejs }}')">
                             <i class="fas fa-edit"></i>
-                        </a>
-                        <a href="{% url 'delete_transaction' pk=t.pk %}" class="btn btn-sm btn-outline-danger">
+                        </button>
+                        <button type="button" class="btn btn-sm btn-outline-danger"
+                                onclick="openDeleteTxn({{ t.pk }},'{{ t.get_category_display }}','{{ t.amount }}','{{ t.date|date:"M d, Y" }}')">
                             <i class="fas fa-trash-alt"></i>
-                        </a>
+                        </button>
                     </td>
                 </tr>
                 {% endfor %}
@@ -139,7 +138,7 @@
         </table>
     </div>
 
-    <!-- Mobile -->
+    <!-- Mobile cards -->
     <div class="d-md-none p-3">
         {% for t in transactions %}
         <div class="txn-row">
@@ -155,12 +154,14 @@
                     {% if t.type == 'Income' %}+{% else %}-{% endif %}{% currency t.amount %}
                 </div>
                 <div class="d-flex gap-2 justify-content-end mt-1">
-                    <a href="{% url 'edit_transaction' pk=t.pk %}" class="btn btn-sm btn-link text-muted p-0">
+                    <button type="button" class="btn btn-sm btn-link text-muted p-0"
+                            onclick="openEditTxn({{ t.pk }},'{{ t.type }}','{{ t.category }}','{{ t.amount }}','{{ t.date|date:"Y-m-d" }}','{{ t.description|default:""|escapejs }}')">
                         <i class="fas fa-edit"></i>
-                    </a>
-                    <a href="{% url 'delete_transaction' pk=t.pk %}" class="btn btn-sm btn-link text-danger p-0">
+                    </button>
+                    <button type="button" class="btn btn-sm btn-link text-danger p-0"
+                            onclick="openDeleteTxn({{ t.pk }},'{{ t.get_category_display }}','{{ t.amount }}','{{ t.date|date:"M d, Y" }}')">
                         <i class="fas fa-trash-alt"></i>
-                    </a>
+                    </button>
                 </div>
             </div>
         </div>
@@ -183,29 +184,21 @@
     <ul class="pagination justify-content-center">
         {% if transactions.has_previous %}
             <li class="page-item">
-                <a class="page-link" href="?page={{ transactions.previous_page_number }}&q={{ current_query|default_if_none:'' }}&category={{ current_category|default_if_none:'' }}&start_date={{ current_start_date|default_if_none:'' }}&end_date={{ current_end_date|default_if_none:'' }}">
-                    <i class="fas fa-chevron-left"></i>
-                </a>
+                <a class="page-link" href="?page={{ transactions.previous_page_number }}&q={{ current_query|default_if_none:'' }}&category={{ current_category|default_if_none:'' }}&start_date={{ current_start_date|default_if_none:'' }}&end_date={{ current_end_date|default_if_none:'' }}"><i class="fas fa-chevron-left"></i></a>
             </li>
         {% else %}
             <li class="page-item disabled"><span class="page-link"><i class="fas fa-chevron-left"></i></span></li>
         {% endif %}
-
         {% for i in transactions.paginator.page_range %}
             {% if transactions.number == i %}
                 <li class="page-item active"><span class="page-link">{{ i }}</span></li>
             {% elif i > transactions.number|add:'-3' and i < transactions.number|add:'3' %}
-                <li class="page-item">
-                    <a class="page-link" href="?page={{ i }}&q={{ current_query|default_if_none:'' }}&category={{ current_category|default_if_none:'' }}&start_date={{ current_start_date|default_if_none:'' }}&end_date={{ current_end_date|default_if_none:'' }}">{{ i }}</a>
-                </li>
+                <li class="page-item"><a class="page-link" href="?page={{ i }}&q={{ current_query|default_if_none:'' }}&category={{ current_category|default_if_none:'' }}&start_date={{ current_start_date|default_if_none:'' }}&end_date={{ current_end_date|default_if_none:'' }}">{{ i }}</a></li>
             {% endif %}
         {% endfor %}
-
         {% if transactions.has_next %}
             <li class="page-item">
-                <a class="page-link" href="?page={{ transactions.next_page_number }}&q={{ current_query|default_if_none:'' }}&category={{ current_category|default_if_none:'' }}&start_date={{ current_start_date|default_if_none:'' }}&end_date={{ current_end_date|default_if_none:'' }}">
-                    <i class="fas fa-chevron-right"></i>
-                </a>
+                <a class="page-link" href="?page={{ transactions.next_page_number }}&q={{ current_query|default_if_none:'' }}&category={{ current_category|default_if_none:'' }}&start_date={{ current_start_date|default_if_none:'' }}&end_date={{ current_end_date|default_if_none:'' }}"><i class="fas fa-chevron-right"></i></a>
             </li>
         {% else %}
             <li class="page-item disabled"><span class="page-link"><i class="fas fa-chevron-right"></i></span></li>
@@ -214,7 +207,89 @@
 </nav>
 {% endif %}
 
-<!-- Import Modal -->
+
+<!-- ── Edit Transaction Modal ────────────────────────────────── -->
+<div class="modal fade" id="editTxnModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow">
+            <div class="modal-header bg-primary text-white border-0">
+                <h5 class="modal-title fw-bold"><i class="fas fa-edit me-2"></i>Edit Transaction</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="editTxnForm" method="POST" action="">
+                {% csrf_token %}
+                <div class="modal-body p-4">
+                    <div class="row g-3">
+                        <div class="col-6">
+                            <label class="form-label fw-semibold">Type</label>
+                            <select name="type" id="editType" class="form-select" required>
+                                <option value="Expense">Expense</option>
+                                <option value="Income">Income</option>
+                            </select>
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label fw-semibold">Amount</label>
+                            <div class="input-group">
+                                <span class="input-group-text bg-light">{{ CUSTOM_CURRENCY_SYMBOL }}</span>
+                                <input type="number" name="amount" id="editAmount" class="form-control" step="0.01" min="0.01" required>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label fw-semibold">Category</label>
+                            <select name="category" id="editCategory" class="form-select" required>
+                                <option value="income">Income</option>
+                                <option value="food">Food &amp; Dining</option>
+                                <option value="transport">Transport</option>
+                                <option value="housing">Housing</option>
+                                <option value="bills">Bills &amp; Utilities</option>
+                                <option value="entertainment">Entertainment</option>
+                                <option value="shopping">Shopping</option>
+                                <option value="health">Health &amp; Wellness</option>
+                                <option value="education">Education</option>
+                                <option value="other">Other</option>
+                            </select>
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label fw-semibold">Date</label>
+                            <input type="date" name="date" id="editDate" class="form-control" required>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label fw-semibold">Description <span class="text-muted fw-normal small">(optional)</span></label>
+                            <input type="text" name="description" id="editDescription" class="form-control">
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer border-0 pt-0">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary px-4"><i class="fas fa-save me-2"></i>Save Changes</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- ── Delete Transaction Modal ──────────────────────────────── -->
+<div class="modal fade" id="deleteTxnModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-sm">
+        <div class="modal-content border-0 shadow">
+            <div class="modal-body text-center p-4">
+                <div class="text-danger mb-3"><i class="fas fa-exclamation-triangle fa-3x"></i></div>
+                <h5 class="fw-bold mb-1">Delete Transaction?</h5>
+                <p class="text-muted mb-1" id="deleteTxnDesc"></p>
+                <p class="fw-bold text-danger mb-4" id="deleteTxnAmt"></p>
+                <div class="d-flex gap-2 justify-content-center">
+                    <button type="button" class="btn btn-light px-4" data-bs-dismiss="modal">Cancel</button>
+                    <form id="deleteTxnForm" method="POST" action="" class="d-inline">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-danger px-4">Delete</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ── Import Modal ──────────────────────────────────────────── -->
 <div class="modal fade" id="importModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content border-0 shadow">
@@ -239,13 +314,32 @@
                 </div>
                 <div class="modal-footer border-0 pt-0">
                     <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn btn-success px-4">
-                        <i class="fas fa-upload me-1"></i>Upload & Import
-                    </button>
+                    <button type="submit" class="btn btn-success px-4"><i class="fas fa-upload me-1"></i>Upload &amp; Import</button>
                 </div>
             </form>
         </div>
     </div>
 </div>
 
+{% endblock %}
+
+{% block scripts %}
+<script>
+function openEditTxn(pk, type, category, amount, date, description) {
+    document.getElementById('editTxnForm').action = '/transaction/' + pk + '/edit/';
+    document.getElementById('editType').value        = type;
+    document.getElementById('editCategory').value    = category;
+    document.getElementById('editAmount').value      = amount;
+    document.getElementById('editDate').value        = date;
+    document.getElementById('editDescription').value = description;
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('editTxnModal')).show();
+}
+
+function openDeleteTxn(pk, category, amount, date) {
+    document.getElementById('deleteTxnForm').action = '/transaction/delete/' + pk + '/';
+    document.getElementById('deleteTxnDesc').textContent = category + ' · ' + date;
+    document.getElementById('deleteTxnAmt').textContent  = amount;
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('deleteTxnModal')).show();
+}
+</script>
 {% endblock %}

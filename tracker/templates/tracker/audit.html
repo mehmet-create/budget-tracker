@@ -1,156 +1,266 @@
 {% extends 'tracker/base.html' %}
 {% load tracker_filters %}
 
-{% block title %}Dashboard — BudgetApp{% endblock %}
+{% block title %}Spend Audit — BudgetApp{% endblock %}
 
 {% block content %}
 
 <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
     <div>
-        <h2 class="fw-bold mb-0">Dashboard</h2>
-        <p class="text-muted mb-0">{{ current_month|date:"F Y" }}</p>
+        <h2 class="fw-bold mb-0"><i class="fas fa-robot text-primary me-2"></i>Spend Audit</h2>
+        <p class="text-muted mb-0">Find your recurring subscriptions and wasteful spending.</p>
     </div>
-    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addTxnModal">
-        <i class="fas fa-plus me-2"></i>Add Transaction
-    </button>
-</div>
-
-<!-- Stat Cards -->
-<div class="row g-3 mb-4">
-    <div class="col-12 col-sm-4">
-        <div class="card border-0 h-100" style="background:#d1fae5;">
-            <div class="card-body p-3 p-md-4">
-                <div class="d-flex justify-content-between align-items-start mb-2">
-                    <p class="stat-label mb-0" style="color:#065f46;">Total Income</p>
-                    <div class="icon-shape" style="background:#a7f3d0;width:36px;height:36px;color:#065f46;">
-                        <i class="fas fa-arrow-up"></i>
-                    </div>
-                </div>
-                <p class="stat-value" style="color:#065f46;">{% currency total_income %}</p>
-            </div>
-        </div>
-    </div>
-    <div class="col-12 col-sm-4">
-        <div class="card border-0 h-100" style="background:#fee2e2;">
-            <div class="card-body p-3 p-md-4">
-                <div class="d-flex justify-content-between align-items-start mb-2">
-                    <p class="stat-label mb-0" style="color:#991b1b;">Total Expenses</p>
-                    <div class="icon-shape" style="background:#fecaca;width:36px;height:36px;color:#991b1b;">
-                        <i class="fas fa-arrow-down"></i>
-                    </div>
-                </div>
-                <p class="stat-value" style="color:#991b1b;">{% currency total_expense %}</p>
-            </div>
-        </div>
-    </div>
-    <div class="col-12 col-sm-4">
-        <div class="card border-0 h-100" style="background:#dbeafe;">
-            <div class="card-body p-3 p-md-4">
-                <div class="d-flex justify-content-between align-items-start mb-2">
-                    <p class="stat-label mb-0" style="color:#1e40af;">Net Balance</p>
-                    <div class="icon-shape" style="background:#bfdbfe;width:36px;height:36px;color:#1e40af;">
-                        <i class="fas fa-wallet"></i>
-                    </div>
-                </div>
-                <p class="stat-value {% if balance >= 0 %}text-primary{% else %}text-danger{% endif %}">
-                    {% currency balance %}
-                </p>
-            </div>
-        </div>
-    </div>
+    <a href="{% url 'dashboard' %}" class="btn btn-outline-secondary btn-sm">
+        <i class="fas fa-arrow-left me-1"></i>Back
+    </a>
 </div>
 
 <div class="row g-4">
 
-    <!-- Budget Goals -->
-    <div class="col-12 col-xl-7">
-        <div class="card h-100">
-            <div class="card-header bg-white d-flex justify-content-between align-items-center py-3">
-                <h5 class="mb-0 fw-bold"><i class="fas fa-bullseye me-2 text-primary"></i>Budget Goals</h5>
-                <a href="{% url 'goals_list' %}" class="btn btn-outline-primary btn-sm">Manage</a>
-            </div>
-            <div class="card-body p-0">
-                {% if goals %}
-                <div class="px-4 py-2">
-                    {% for goal in goals %}
-                    <div class="goal-row">
-                        <div class="d-flex justify-content-between align-items-center mb-1">
-                            <span class="fw-semibold">{{ goal.get_category_display }}</span>
-                            <span class="badge {% if goal.remaining < 0 %}bg-danger{% elif goal.progress_percent > 80 %}bg-warning text-dark{% else %}bg-success{% endif %}">
-                                {{ goal.progress_percent|floatformat:0 }}%
-                            </span>
-                        </div>
-                        <div class="progress mb-2" style="height:6px;">
-                            <div class="progress-bar {% if goal.remaining < 0 %}bg-danger{% elif goal.progress_percent > 80 %}bg-warning{% else %}bg-success{% endif %}"
-                                 style="width:{% if goal.progress_percent > 100 %}100{% else %}{{ goal.progress_percent }}{% endif %}%">
-                            </div>
-                        </div>
-                        <div class="d-flex justify-content-between txn-meta">
-                            <span>{% currency goal.actual_spent %} of {% currency goal.target_amount %}</span>
-                            <span class="{% if goal.remaining < 0 %}text-danger fw-bold{% else %}text-success fw-bold{% endif %}">
-                                {% currency goal.remaining %} left
-                            </span>
-                        </div>
-                    </div>
-                    {% endfor %}
-                </div>
-                {% else %}
-                <div class="empty-state">
-                    <i class="fas fa-bullseye fa-3x d-block"></i>
-                    <p class="mb-3">No goals set for this month.</p>
-                    <a href="{% url 'goals_list' %}" class="btn btn-primary btn-sm">Set Budget Goals</a>
-                </div>
-                {% endif %}
-            </div>
-        </div>
-    </div>
+    <!-- LEFT: Period + transaction input ───────────────────── -->
+    <div class="col-12 col-lg-5">
 
-    <!-- Right column -->
-    <div class="col-12 col-xl-5 d-flex flex-column gap-4">
-
-        <!-- Spend Audit promo card -->
-        <div class="promo-card p-4">
-            <h5 class="fw-bold mb-1"><i class="fas fa-search me-2"></i>Spend Audit</h5>
-            <p class="mb-3 opacity-75">Find recurring subscriptions and wasted spending in your bank statement.</p>
-            <a href="{% url 'audit' %}" class="btn btn-light fw-semibold">
-                Run Audit
-            </a>
-        </div>
-
-        <!-- Recent Transactions -->
-        <div class="card flex-fill">
-            <div class="card-header bg-white d-flex justify-content-between align-items-center py-3">
-                <h5 class="mb-0 fw-bold"><i class="fas fa-clock me-2 text-primary"></i>Recent Transactions</h5>
-                <a href="{% url 'transactions' %}" class="btn btn-outline-secondary btn-sm">View All</a>
+        <!-- 1. Period picker (GET – reloads page with fresh data) -->
+        <div class="card mb-3">
+            <div class="card-header bg-white py-3">
+                <h6 class="fw-bold mb-0"><i class="fas fa-calendar-alt me-2 text-primary"></i>Step 1 – Choose Period</h6>
             </div>
             <div class="card-body p-3">
-                {% if recent_transactions %}
-                {% for t in recent_transactions %}
-                <div class="txn-row">
-                    <div class="txn-avatar {% if t.type == 'Income' %}bg-success text-white{% else %}bg-light text-muted{% endif %}">
-                        <i class="fas {% if t.type == 'Income' %}fa-arrow-up{% else %}fa-arrow-down{% endif %}"></i>
+                <form method="GET" action="{% url 'audit' %}">
+                    <div class="row g-2 align-items-end">
+                        <div class="col-5">
+                            <label class="form-label small fw-semibold">From</label>
+                            <input type="date" name="start_date" class="form-control" value="{{ start_date }}">
+                        </div>
+                        <div class="col-5">
+                            <label class="form-label small fw-semibold">To</label>
+                            <input type="date" name="end_date" class="form-control" value="{{ end_date }}">
+                        </div>
+                        <div class="col-2">
+                            <button type="submit" class="btn btn-primary w-100" data-no-loading title="Load transactions for this period">
+                                <i class="fas fa-sync-alt"></i>
+                            </button>
+                        </div>
                     </div>
-                    <div class="flex-grow-1" style="min-width:0">
-                        <div class="txn-desc">{{ t.description|default:t.get_category_display|truncatechars:28 }}</div>
-                        <div class="txn-meta">{{ t.get_category_display }} · {{ t.date|date:"M d" }}</div>
+                    <!-- Quick range buttons -->
+                    <div class="d-flex gap-2 mt-2 flex-wrap">
+                        <button type="button" class="btn btn-outline-secondary btn-sm" onclick="setRange(30)">Last 30 days</button>
+                        <button type="button" class="btn btn-outline-secondary btn-sm" onclick="setRange(90)">Last 3 months</button>
+                        <button type="button" class="btn btn-outline-secondary btn-sm" onclick="setThisMonth()">This month</button>
                     </div>
-                    <div class="txn-amount {% if t.type == 'Income' %}text-success{% else %}text-danger{% endif %}">
-                        {% if t.type == 'Income' %}+{% else %}-{% endif %}{% currency t.amount %}
-                    </div>
-                </div>
-                {% endfor %}
-                {% else %}
-                <div class="empty-state" style="padding:2rem 1rem;">
-                    <i class="fas fa-receipt fa-2x d-block"></i>
-                    <p class="mb-2">No transactions yet.</p>
-                    <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#addTxnModal">
-                        Add First Transaction
-                    </button>
+                </form>
+                {% if txn_count is not None %}
+                <div class="mt-3 pt-3 border-top">
+                    {% if txn_count > 0 %}
+                    <p class="mb-0 small text-success"><i class="fas fa-check-circle me-1"></i>{{ txn_count }} transaction{{ txn_count|pluralize }} loaded from this period.</p>
+                    {% else %}
+                    <p class="mb-0 small text-muted"><i class="fas fa-info-circle me-1"></i>No transactions found. Paste data manually below.</p>
+                    {% endif %}
                 </div>
                 {% endif %}
             </div>
         </div>
+
+        <!-- 2. Transaction data + run (POST) -->
+        <div class="card">
+            <div class="card-header bg-white py-3">
+                <h6 class="fw-bold mb-0"><i class="fas fa-file-alt me-2 text-primary"></i>Step 2 – Review &amp; Run</h6>
+            </div>
+            <form method="POST" action="{% url 'audit' %}" enctype="multipart/form-data">
+                {% csrf_token %}
+                <input type="hidden" name="start_date" value="{{ start_date }}">
+                <input type="hidden" name="end_date" value="{{ end_date }}">
+
+                <div class="card-body p-3">
+                    <!-- Tabs: pre-filled vs paste -->
+                    <ul class="nav nav-pills nav-fill mb-3" id="auditTabs">
+                        <li class="nav-item">
+                            <a class="nav-link active" id="tab-db" href="#" onclick="switchTab('db'); return false;">
+                                <i class="fas fa-database me-1"></i>Your Transactions
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" id="tab-csv" href="#" onclick="switchTab('csv'); return false;">
+                                <i class="fas fa-paste me-1"></i>Paste / CSV
+                            </a>
+                        </li>
+                    </ul>
+
+                    <!-- DB tab: pre-filled from real transactions -->
+                    <div id="pane-db">
+                        <p class="text-muted small mb-2">
+                            Pre-filled from your {{ start_date }} → {{ end_date }} transactions.
+                            You can edit before running.
+                        </p>
+                        <textarea name="transactions" class="form-control font-monospace bg-light"
+                                  rows="13" style="font-size:0.75rem;line-height:1.5;"
+                                  placeholder="No transactions in this period — switch to Paste tab.">{{ pre_filled_text }}</textarea>
+                    </div>
+
+                    <!-- CSV/Paste tab: user provides data -->
+                    <div id="pane-csv" class="d-none">
+                        <p class="text-muted small mb-2">
+                            Paste raw text from your banking app, or upload a CSV export.
+                        </p>
+                        <textarea name="csv_paste" id="csvPasteArea" class="form-control font-monospace bg-light mb-3"
+                                  rows="8" style="font-size:0.75rem;line-height:1.5;"
+                                  placeholder="DATE        DESCRIPTION              AMOUNT&#10;2025-01-15  NETFLIX.COM              4500&#10;2025-01-16  SPOTIFY                  3200&#10;2025-01-20  DSTV SUBSCRIPTION        8500"></textarea>
+                        <label class="form-label small fw-semibold">Or upload a CSV file</label>
+                        <input type="file" name="csv_file" class="form-control form-control-sm" accept=".csv">
+                        <div class="form-text">We'll extract the text and add it to the analysis.</div>
+                    </div>
+                </div>
+
+                <div class="card-footer bg-white border-0 px-3 pb-3 pt-0">
+                    {% if goals %}
+                    <div class="alert alert-light border mb-3 py-2">
+                        <p class="small mb-1 fw-semibold">Budget goals for this period:</p>
+                        {% for goal in goals %}
+                        <span class="badge bg-light text-dark border me-1">{{ goal.get_category_display }}: {% currency goal.target_amount %}</span>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+                    <button type="submit" class="btn btn-primary w-100 fw-semibold">
+                        <i class="fas fa-magic me-2"></i>Run Audit
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- RIGHT: Results ──────────────────────────────────────── -->
+    <div class="col-12 col-lg-7">
+
+        {% if error_msg %}
+        <div class="alert alert-danger border-0 d-flex align-items-center gap-3">
+            <i class="fas fa-exclamation-triangle fa-lg flex-shrink-0"></i>
+            <div>
+                <h6 class="fw-bold mb-1">Audit Failed</h6>
+                <p class="mb-0">{{ error_msg }}</p>
+            </div>
+        </div>
+        {% endif %}
+
+        {% if results %}
+
+        <div class="alert border-0 mb-4 d-flex align-items-center gap-3" style="background:#e0e7ff;color:#1e40af;">
+            <i class="fas fa-robot fa-2x flex-shrink-0"></i>
+            <div>
+                <h6 class="fw-bold mb-0">Analysis complete</h6>
+                <p class="mb-0 small">Found {{ results.subscriptions|length }} subscription{{ results.subscriptions|length|pluralize }}
+                {% if results.total_subscription_spend %} · Total: {% currency results.total_subscription_spend %}/month{% endif %}</p>
+            </div>
+        </div>
+
+        {% if results.summary %}
+        <div class="card mb-4 border-start border-4 border-primary">
+            <div class="card-body p-4">
+                <h6 class="fw-bold mb-2"><i class="fas fa-lightbulb text-warning me-2"></i> Summary</h6>
+                <p class="mb-0">{{ results.summary }}</p>
+            </div>
+        </div>
+        {% endif %}
+
+        {% if results.subscriptions %}
+        <div class="row g-3">
+            {% for sub in results.subscriptions %}
+            <div class="col-12 col-sm-6">
+                <div class="card h-100 border-top border-4 {% if sub.status == 'Potential Duplicate' %}border-danger{% elif sub.status == 'Review' %}border-warning{% else %}border-primary{% endif %}">
+                    <div class="card-body p-3">
+                        <div class="d-flex justify-content-between align-items-start mb-2">
+                            <h6 class="card-title fw-bold mb-0">{{ sub.name }}</h6>
+                            <span class="fw-bold text-danger ms-2 text-nowrap">{% currency sub.cost %}</span>
+                        </div>
+                        <div class="mb-2">
+                            {% if sub.frequency %}<span class="badge bg-light text-dark border me-1">{{ sub.frequency }}</span>{% endif %}
+                            {% if sub.status == 'Potential Duplicate' %}
+                                <span class="badge bg-danger"><i class="fas fa-exclamation-triangle me-1"></i>Duplicate</span>
+                            {% elif sub.status == 'Review' %}
+                                <span class="badge bg-warning text-dark"><i class="fas fa-eye me-1"></i>Review</span>
+                            {% else %}
+                                <span class="badge bg-success"><i class="fas fa-check me-1"></i>Active</span>
+                            {% endif %}
+                        </div>
+                        {% if sub.advice %}
+                        <div class="bg-light rounded p-2">
+                            <p class="small text-muted mb-0"><i class="fas fa-lightbulb text-warning me-1"></i>{{ sub.advice }}</p>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+
+        {% else %}
+        <div class="card">
+            <div class="card-body text-center py-5">
+                <i class="fas fa-check-circle fa-3x text-success d-block mb-3" style="opacity:0.4;"></i>
+                <p class="text-muted mb-0">No recurring subscriptions detected in this period.</p>
+            </div>
+        </div>
+        {% endif %}
+
+        {% elif not submitted %}
+        <!-- Pre-run empty state -->
+        <div class="card h-100">
+            <div class="card-body d-flex flex-column align-items-center justify-content-center text-center py-5" style="min-height:360px;">
+                <i class="fas fa-search-dollar fa-4x text-muted mb-4" style="opacity:0.12;"></i>
+                <h5 class="fw-bold mb-2">Ready to Audit</h5>
+                <p class="text-muted mb-0">
+                    {% if txn_count %}
+                        {{ txn_count }} transaction{{ txn_count|pluralize }} loaded from this period.
+                    {% else %}
+                        No transactions for this period — paste your bank statement on the left.
+                    {% endif %}
+                    <br>Press <strong>Run Audit</strong> to analyse them.
+                </p>
+            </div>
+        </div>
+        {% endif %}
     </div>
 </div>
+{% endblock %}
 
+{% block scripts %}
+<script>
+// Quick date range helpers
+function setRange(days) {
+    const end   = new Date();
+    const start = new Date();
+    start.setDate(start.getDate() - days);
+    document.querySelector('input[name="start_date"]').value = start.toISOString().slice(0,10);
+    document.querySelector('input[name="end_date"]').value   = end.toISOString().slice(0,10);
+    document.querySelector('form[method="GET"]').submit();
+}
+function setThisMonth() {
+    const now = new Date();
+    const start = new Date(now.getFullYear(), now.getMonth(), 1);
+    document.querySelector('input[name="start_date"]').value = start.toISOString().slice(0,10);
+    document.querySelector('input[name="end_date"]').value   = now.toISOString().slice(0,10);
+    document.querySelector('form[method="GET"]').submit();
+}
+
+// Tab switching
+function switchTab(tab) {
+    const isDb = tab === 'db';
+    document.getElementById('pane-db').classList.toggle('d-none', !isDb);
+    document.getElementById('pane-csv').classList.toggle('d-none', isDb);
+    document.getElementById('tab-db').classList.toggle('active', isDb);
+    document.getElementById('tab-csv').classList.toggle('active', !isDb);
+
+    // When switching to CSV, disable the pre-filled textarea so it doesn't POST too
+    document.querySelector('textarea[name="transactions"]').disabled = !isDb;
+}
+
+// If CSV paste has content, merge it into transactions on submit
+document.querySelector('form[method="POST"]')?.addEventListener('submit', function() {
+    const csvArea   = document.getElementById('csvPasteArea');
+    const mainArea  = document.querySelector('textarea[name="transactions"]');
+    if (csvArea && !csvArea.closest('#pane-csv').classList.contains('d-none') && csvArea.value.trim()) {
+        mainArea.disabled = false;
+        mainArea.value = (mainArea.value + '\n' + csvArea.value).trim();
+    }
+});
+</script>
 {% endblock %}

@@ -713,9 +713,11 @@ def transaction_list(request):
             start_date_obj = datetime.strptime(start_date, '%Y-%m-%d').date()
             if end_date:
                 end_date_obj = datetime.strptime(end_date, '%Y-%m-%d').date()
-                all_transactions = all_transactions.filter(date__range=[start_date_obj, end_date_obj])
             else:
-                all_transactions = all_transactions.filter(date=start_date_obj)
+                # Default to today so a "from" date always gives a full range
+                end_date_obj = datetime.today().date()
+                end_date = end_date_obj.strftime('%Y-%m-%d')
+            all_transactions = all_transactions.filter(date__range=[start_date_obj, end_date_obj])
         except ValueError:
             pass
 
@@ -906,17 +908,86 @@ def validate_file_extension(filename):
 @login_required
 @require_http_methods(["GET", "POST"])
 def subscription_audit_view(request):
-    results = None
+    user = request.user
+    now  = timezone.now()
+
+    # ── Resolve date range ────────────────────────────────────────
+    start_date_str = (request.POST.get('start_date') or
+                      request.GET.get('start_date') or
+                      now.date().replace(day=1).strftime('%Y-%m-%d'))
+    end_date_str   = (request.POST.get('end_date') or
+                      request.GET.get('end_date') or
+                      now.date().strftime('%Y-%m-%d'))
+
+    try:
+        start_date = datetime.strptime(start_date_str, '%Y-%m-%d').date()
+        end_date   = datetime.strptime(end_date_str,   '%Y-%m-%d').date()
+    except ValueError:
+        start_date = now.date().replace(day=1)
+        end_date   = now.date()
+        start_date_str = start_date.strftime('%Y-%m-%d')
+        end_date_str   = end_date.strftime('%Y-%m-%d')
+
+    # ── Pull real transactions from DB ────────────────────────────
+    period_qs = (Transaction.objects
+                 .filter(user=user, date__range=[start_date, end_date])
+                 .order_by('date'))
+
+    lines = []
+    for t in period_qs:
+        lines.append(
+            f"{t.date}  {t.type:<8}  {t.get_category_display():<20}  "
+            f"{(t.description or ''):<30}  {t.amount}"
+        )
+    pre_filled_text = '\n'.join(lines)
+
+    # ── Goals for context ─────────────────────────────────────────
+    goals = BudgetGoal.objects.filter(
+        user=user,
+        year__in=range(start_date.year, end_date.year + 1)
+    )
+
+    results   = None
+    submitted = False
+    error_msg = None
+
+    # ── Run audit on POST ─────────────────────────────────────────
     if request.method == 'POST':
-        transaction_text = request.POST.get('transactions', '').strip()
-        start_date = request.POST.get('start_date', '')
-        end_date = request.POST.get('end_date', '')
+        submitted = True
+        db_text  = request.POST.get('transactions', '').strip()
+        csv_text = request.POST.get('csv_paste', '').strip()
 
-        if transaction_text:
-            from .ai_services import audit_subscriptions
-            results = audit_subscriptions(transaction_text, start_date, end_date)
+        csv_file = request.FILES.get('csv_file')
+        if csv_file:
+            try:
+                csv_content = csv_file.read().decode('utf-8', errors='replace')
+                csv_text = (csv_text + '\n' + csv_content).strip()
+            except Exception:
+                pass
 
-    return render(request, 'tracker/audit.html', {'results': results})
+        combined = '\n'.join(filter(None, [db_text, csv_text]))
+
+        if combined:
+            try:
+                results = audit_subscriptions(combined, start_date_str, end_date_str)
+                if results is None:
+                    error_msg = "Transactions couldn't be analysed."
+            except Exception as e:
+                logger.error(f"Audit error: {e}")
+                error_msg = "Something went wrong running the audit. Please try again."
+        else:
+            error_msg = "No transaction data to analyse for the selected period."
+
+    return render(request, 'tracker/audit.html', {
+        'results':          results,
+        'submitted':        submitted,
+        'error_msg':        error_msg,
+        'pre_filled_text':  pre_filled_text,
+        'start_date':       start_date_str,
+        'end_date':         end_date_str,
+        'txn_count':        period_qs.count(),
+        'goals':            goals,
+    })
 
 @require_GET
 def charts(request):

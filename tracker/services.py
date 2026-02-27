@@ -67,7 +67,7 @@ def register_user(dto):
 
             return existing_user, raw_code
 
-        if User.objects.filter(username=dto.username).exists():
+        if User.objects.filter(username=dto.username, is_active=True).exists():
             raise ServiceError("Username taken.")
 
         user = User.objects.create_user(

@@ -337,15 +337,24 @@ footer { margin-top: auto; }
     display: flex;
     align-items: center;
     width: 100%;
+    /* Identical padding — text starts at the same x-position for both */
     padding: 10px 16px;
     font-size: 0.9rem;
     font-weight: 500;
     color: #212529;
     text-decoration: none;
     background: none;
+    /* Reset every browser button default that can shift content */
     border: none;
+    border-radius: 0;
+    box-shadow: none;
+    margin: 0;
+    text-align: left;
+    line-height: 1.4;
     cursor: pointer;
 }
+
+/* fa-fw makes all FontAwesome icons the same fixed width so text columns line up */
 
 .mobile-profile-menu a:hover,
 .mobile-profile-menu button:hover {
@@ -357,3 +366,22 @@ footer { margin-top: auto; }
     font-size: 1.6rem;
     color: var(--primary);
 }
+/* Standalone mobile menu button helper (used in base.html logout form) */
+.mobile-menu-btn {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    padding: 10px 16px;
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: #212529;
+    background: none;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+    margin: 0;
+    text-align: left;
+    line-height: 1.4;
+    cursor: pointer;
+}
+.mobile-menu-btn:hover { background: #f8f9fa; }
