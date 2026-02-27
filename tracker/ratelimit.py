@@ -7,25 +7,27 @@ class RateLimitError(Exception):
 
 def check_ratelimit(key_prefix: str, limit: int = 5, period: int = 60) -> bool:
     """
-    Lightweight rate limiter using Django's cache backend (Redis).
-
-    This version uses cache.get_or_set() + cache.incr() — two calls total,
-    and cache.incr() is atomic on Redis so there's no race condition either.
+    Lightweight rate limiter using Django's cache backend.
+    Gracefully falls back if cache is unavailable.
     """
     key = f"ratelimit:{key_prefix}"
 
-    # Ensure the key exists with a TTL before we increment it.
-    # get_or_set is atomic enough for our purposes here.
-    current = cache.get(key)
+    try:
+        current = cache.get(key)
 
-    if current is None:
-        # Key doesn't exist yet — set it to 1 with the expiry window
-        cache.set(key, 1, timeout=period)
+        if current is None:
+            cache.set(key, 1, timeout=period)
+            return True
+
+        if current >= limit:
+            raise RateLimitError("Too many requests. Please try again later.")
+
+        cache.incr(key)
         return True
-
-    if current >= limit:
-        raise RateLimitError("Too many requests. Please try again later.")
-
-    # Atomic increment — Redis INCR is a single server-side operation
-    cache.incr(key)
-    return True
+    except Exception as e:
+        # If cache fails, log it but don't block login
+        # Rate limiting will be unavailable but the app will still work
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Cache error in rate limiting: {e}")
+        return True  # Allow the request through if cache is down

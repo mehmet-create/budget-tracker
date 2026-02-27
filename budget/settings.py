@@ -135,6 +135,17 @@ DATABASES = {
 DATABASES['default']['ATOMIC_REQUESTS'] = False
 DATABASES['default']['CONN_MAX_AGE'] = 60 
 
+# Cache Configuration
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        'LOCATION': 'budget-cache',
+        'OPTIONS': {
+            'MAX_ENTRIES': 10000
+        }
+    }
+}
+
 if DEBUG:
     # DEVELOPMENT (LOCAL) SETTINGS: GMAIL
     EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
