@@ -87,37 +87,46 @@ MIDDLEWARE = [
 
 ROOT_URLCONF = 'budget.urls'
 
-if not DEBUG:
-    try:
-        from django.template.loaders.cached import Loader  # noqa
-        _template_dirs = None
-    except Exception:
-        pass
-
-TEMPLATES = [
-    {
-        'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [BASE_DIR / 'templates'],
-        'APP_DIRS': False,
-        'OPTIONS': {
-            'loaders': [
-                ('django.template.loaders.cached.Loader', [
-                    'django.template.loaders.filesystem.Loader',
-                    'django.template.loaders.app_directories.Loader',
-                ]) if not DEBUG else 'django.template.loaders.app_directories.Loader',
-            ] if not DEBUG else [
-                'django.template.loaders.filesystem.Loader',
-                'django.template.loaders.app_directories.Loader',
-            ],
-            'context_processors': [
-                'django.template.context_processors.request',
-                'django.contrib.auth.context_processors.auth',
-                'django.contrib.messages.context_processors.messages',
-                'tracker.context_processors.currency_symbol',
-            ],
+# In production: cached loader compiles each template once, massive speed gain.
+# In dev: APP_DIRS=True so template changes are picked up immediately.
+if DEBUG:
+    TEMPLATES = [
+        {
+            'BACKEND': 'django.template.backends.django.DjangoTemplates',
+            'DIRS': [BASE_DIR / 'templates'],
+            'APP_DIRS': True,
+            'OPTIONS': {
+                'context_processors': [
+                    'django.template.context_processors.request',
+                    'django.contrib.auth.context_processors.auth',
+                    'django.contrib.messages.context_processors.messages',
+                    'tracker.context_processors.currency_symbol',
+                ],
+            },
         },
-    },
-]
+    ]
+else:
+    TEMPLATES = [
+        {
+            'BACKEND': 'django.template.backends.django.DjangoTemplates',
+            'DIRS': [BASE_DIR / 'templates'],
+            'APP_DIRS': False,
+            'OPTIONS': {
+                'loaders': [
+                    ('django.template.loaders.cached.Loader', [
+                        'django.template.loaders.filesystem.Loader',
+                        'django.template.loaders.app_directories.Loader',
+                    ]),
+                ],
+                'context_processors': [
+                    'django.template.context_processors.request',
+                    'django.contrib.auth.context_processors.auth',
+                    'django.contrib.messages.context_processors.messages',
+                    'tracker.context_processors.currency_symbol',
+                ],
+            },
+        },
+    ]
 
 WSGI_APPLICATION = 'budget.wsgi.application'
 
@@ -225,6 +234,9 @@ LOGIN_URL = 'login'
 
 # ERROR HANDLERS
 CSRF_FAILURE_VIEW = 'tracker.views.csrf_failure_json'
+
+# Tell @login_required where to redirect unauthenticated users
+LOGIN_URL = 'login'
 GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY')
 GROQ_API_KEY = os.environ.get('GROQ_API_KEY')
 
