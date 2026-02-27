@@ -83,7 +83,7 @@ class TransactionDTO:
     transaction_type: str
     category: str
     date: datetime.date
-    description: str = "Transaction"
+    description: str = ""
 
     VALID_CATEGORIES = {
         'income', 'food', 'transport', 'housing', 'bills',
@@ -126,7 +126,7 @@ class TransactionDTO:
         # Description — strip, cap length, no script tags
         desc = (self.description or '').strip()
         desc = desc[:255]  # enforce DB max_length
-        self.description = desc if desc else "Transaction"
+        self.description = desc  # empty string = no description, template handles display
 
 @dataclass 
 class ImportTransactionsDTO:

@@ -129,7 +129,13 @@
                             <i class="fas {% if t.type == 'Income' %}fa-arrow-up{% else %}fa-arrow-down{% endif %}"></i>
                         </div>
                         <div class="flex-grow-1" style="min-width:0">
-                            <div class="txn-desc">{{ t.description|default:t.get_category_display|truncatechars:26 }}</div>
+                            <div class="txn-desc">
+                                {% if t.description and t.description != "Transaction" %}
+                                    {{ t.description|truncatechars:26 }}
+                                {% else %}
+                                    {{ t.get_category_display }}
+                                {% endif %}
+                            </div>
                             <div class="txn-meta">{{ t.get_category_display }} · {{ t.date|date:"M d" }}</div>
                         </div>
                         <div class="txn-amount {% if t.type == 'Income' %}text-success{% else %}text-danger{% endif %}">

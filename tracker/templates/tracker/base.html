@@ -261,9 +261,8 @@ if (addModal) {
 
             if (resp.ok && data.status === 'success') {
                 bootstrap.Modal.getInstance(addModal).hide();
-                this.reset();
-                document.getElementById('addTxnDate').valueAsDate = new Date();
-                showFlash('Transaction saved successfully!', 'success');
+                // Reload so stats, recent list, and goal progress all update instantly
+                window.location.reload();
             } else {
                 const msg = data.message
                     || (data.errors ? Object.values(data.errors).flat().join(', ') : 'Please check your input.');
