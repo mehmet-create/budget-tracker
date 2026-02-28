@@ -663,10 +663,13 @@ def dashboard(request):
 
     recent_transactions = Transaction.objects.filter(user=user).order_by('-date', '-id')[:5]
 
-    all_transactions = Transaction.objects.filter(user=user)
-    totals = all_transactions.aggregate(
-        income=Sum('amount', filter=Q(type__iexact='Income')),
-        expense=Sum('amount', filter=Q(type__iexact='Expense'))
+    totals = Transaction.objects.filter(
+        user=user,
+        date__month=current_month,
+        date__year=current_year
+    ).aggregate(
+        income=Sum('amount', filter=Q(type='Income')),
+        expense=Sum('amount', filter=Q(type='Expense'))
     )
     
     total_income = totals['income'] or Decimal('0.00')
@@ -761,10 +764,13 @@ def transaction_list(request):
     except EmptyPage:
         transactions_page = paginator.page(paginator.num_pages)
 
-    income_agg = all_transactions.filter(type='Income').aggregate(Sum('amount'))
-    expense_agg = all_transactions.filter(type='Expense').aggregate(Sum('amount'))
-    total_income = income_agg['amount__sum'] or 0
-    total_expense = expense_agg['amount__sum'] or 0
+    from django.db.models import Case, When, DecimalField
+    agg = all_transactions.aggregate(
+        total_income=Sum(Case(When(type='Income', then='amount'), output_field=DecimalField())),
+        total_expense=Sum(Case(When(type='Expense', then='amount'), output_field=DecimalField())),
+    )
+    total_income = agg['total_income'] or 0
+    total_expense = agg['total_expense'] or 0
 
     if is_json_request(request):
         transactions_data = list(transactions_page.object_list.values(
@@ -997,11 +1003,20 @@ def subscription_audit_view(request):
         )
     pre_filled_text = '\n'.join(lines)
 
-    # ── Goals for context ─────────────────────────────────────────
-    goals = BudgetGoal.objects.filter(
-        user=user,
-        year__in=range(start_date.year, end_date.year + 1)
-    )
+    # ── Goals for context — scoped to audit period, deduplicated by category ────
+    from django.db.models import Q as GoalQ
+    raw_goals = BudgetGoal.objects.filter(user=user).filter(
+        GoalQ(year=start_date.year, month__gte=start_date.month) |
+        GoalQ(year=end_date.year,   month__lte=end_date.month)
+    ).order_by('-year', '-month', 'category')
+
+    # Keep only the most recent goal per category (newest month wins)
+    # so spanning Jan+Feb doesn't show the same category twice
+    _seen_cats = {}
+    for g in raw_goals:
+        if g.category not in _seen_cats:
+            _seen_cats[g.category] = g
+    goals = sorted(_seen_cats.values(), key=lambda g: g.get_category_display())
 
     results   = None
     submitted = False
@@ -1026,7 +1041,16 @@ def subscription_audit_view(request):
 
         if combined:
             try:
-                results = audit_subscriptions(combined, start_date_str, end_date_str)
+                # goals is already deduplicated above — just build the summary string
+                goals_summary = ""
+                if goals:
+                    goal_lines = [
+                        f"  - {g.get_category_display()}: ₦{g.target_amount:,.0f} monthly budget"
+                        for g in goals
+                    ]
+                    goals_summary = "User's monthly budget goals:\n" + "\n".join(goal_lines)
+
+                results = audit_subscriptions(combined, start_date_str, end_date_str, goals_summary)
                 if results is None:
                     error_msg = "Tranasctions couldn't be analysed. Please check the format and try again."
             except Exception as e:
@@ -1034,6 +1058,13 @@ def subscription_audit_view(request):
                 error_msg = "Something went wrong running the audit. Please try again."
         else:
             error_msg = "No transaction data to analyse for the selected period."
+
+    # Deduplicate goals for template display — one per category, newest month wins
+    seen_cats = {}
+    for g in goals:
+        if g.category not in seen_cats:
+            seen_cats[g.category] = g
+    display_goals = list(seen_cats.values())
 
     return render(request, 'tracker/audit.html', {
         'results':          results,
@@ -1043,7 +1074,7 @@ def subscription_audit_view(request):
         'start_date':       start_date_str,
         'end_date':         end_date_str,
         'txn_count':        period_qs.count(),
-        'goals':            goals,
+        'goals':            display_goals,
     })
 
 @login_required
@@ -1054,28 +1085,29 @@ def charts(request):
         if is_json_request(request): return JsonResponse({'status': 'error', 'message': 'Unauthorized'}, status=401)
         return redirect('login')
 
-    transactions = list(Transaction.objects.filter(user=user))
-    
-    total_income = 0.0
-    total_expense = 0.0
-    category_totals = defaultdict(float)
-
-    for t in transactions:
-        try:
-            amount = float(t.amount)
-            if t.type == "Income": total_income += amount
-            elif t.type == "Expense":
-                total_expense += amount
-                category_totals[t.category] += amount
-        except: continue
-
+    from django.db.models import Case, When, DecimalField
+    totals_agg = Transaction.objects.filter(user=user).aggregate(
+        total_income=Sum(Case(When(type='Income', then='amount'), output_field=DecimalField())),
+        total_expense=Sum(Case(When(type='Expense', then='amount'), output_field=DecimalField())),
+    )
+    total_income  = float(totals_agg['total_income']  or 0)
+    total_expense = float(totals_agg['total_expense'] or 0)
     balance = total_income - total_expense
+
+    cat_qs = (Transaction.objects
+              .filter(user=user, type='Expense')
+              .values('category')
+              .annotate(total=Sum('amount'))
+              .order_by('-total'))
+
     category_label_map = dict(Transaction.CATEGORY_CHOICES)
-    category_labels = [category_label_map.get(key, key) for key in category_totals.keys()]
+    category_labels = [category_label_map.get(r['category'], r['category']) for r in cat_qs]
+    category_values = [float(r['total']) for r in cat_qs]
+
     context = {
         "total_income": total_income, "total_expense": total_expense, "balance": balance,
         "category_labels": category_labels,
-        "category_values": list(category_totals.values()),
+        "category_values": category_values,
     }
     if is_json_request(request): return JsonResponse({'status': 'success', 'data': context})
     return render(request, "tracker/charts.html", context)

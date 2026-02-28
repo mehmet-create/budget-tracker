@@ -33,10 +33,10 @@ class Transaction(models.Model):
     # every query does a full table scan — slow at any real data volume.
     class Meta:
         indexes = [
-            models.Index(fields=['user', '-date']),        # dashboard recent transactions
-            models.Index(fields=['user', 'type']),          # income vs expense totals
-            models.Index(fields=['user', 'category']),      # category breakdowns
-            models.Index(fields=['user', 'type', 'date']), # monthly filtered totals
+            models.Index(fields=['user', 'date'],      name='txn_user_date_idx'),
+            models.Index(fields=['user', 'type'],       name='txn_user_type_idx'),
+            models.Index(fields=['user', 'category'],   name='txn_user_cat_idx'),
+            models.Index(fields=['user', 'type', 'date'], name='txn_user_type_date_idx'),
         ]
 
     def save(self, *args, **kwargs):

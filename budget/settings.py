@@ -140,7 +140,8 @@ DATABASES = {
     )
 }
 DATABASES['default']['ATOMIC_REQUESTS'] = False
-DATABASES['default']['CONN_MAX_AGE'] = 60 
+DATABASES['default']['CONN_MAX_AGE'] = 600  # keep connections alive 10min
+DATABASES['default']['OPTIONS'] = {'connect_timeout': 10}
 
 # Cache Configuration
 # WARNING: LocMemCache is per-process — rate limiting is unreliable with 3+ workers.
@@ -156,33 +157,26 @@ CACHES = {
     }
 }
 
-# Email provider selection
-# Priority:
-# 1) Explicit EMAIL_PROVIDER env var (gmail/resend)
-# 2) Auto-detect Render => resend, otherwise gmail
-EMAIL_PROVIDER = os.environ.get('EMAIL_PROVIDER', '').strip().lower()
-if not EMAIL_PROVIDER:
-    EMAIL_PROVIDER = 'resend' if os.environ.get('RENDER_EXTERNAL_HOSTNAME') else 'gmail'
-
-if EMAIL_PROVIDER == 'gmail':
-    # LOCAL / OFFLINE: GMAIL SMTP
+if DEBUG:
+    # DEVELOPMENT (LOCAL) SETTINGS: GMAIL
     EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
     EMAIL_HOST = 'smtp.gmail.com'
     EMAIL_PORT = 587
     EMAIL_USE_TLS = True
     EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER')
     EMAIL_HOST_PASSWORD = os.environ.get('GMAIL_APP_PASSWORD')
-    DEFAULT_FROM_EMAIL = f"BudgetApp <{EMAIL_HOST_USER or 'no-reply@localhost'}>"
+    DEFAULT_FROM_EMAIL = f"BudgetApp <{os.environ.get('EMAIL_HOST_USER')}>"
+
 else:
-    # ONLINE / RENDER: RESEND SMTP
+    # PRODUCTION (ONLINE) SETTINGS: RESEND
     EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
     EMAIL_HOST = 'smtp.resend.com'
-    EMAIL_TIMEOUT = 10
+    EMAIL_TIMEOUT = 10  # seconds — never hang forever on SMTP
     EMAIL_PORT = 587
     EMAIL_USE_TLS = True
     EMAIL_HOST_USER = 'resend'
     EMAIL_HOST_PASSWORD = os.environ.get('RESEND_API_KEY')
-    DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL', 'onboarding@resend.dev')
+    DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL', 'onboarding@resend.dev') # Or your verified domain
 
 RESEND_API_KEY = os.environ.get('RESEND_API_KEY')
 
@@ -220,16 +214,7 @@ USE_TZ = True
 
 STATIC_URL = '/static/'
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
-STORAGES = {
-    'default': {
-        'BACKEND': 'django.core.files.storage.FileSystemStorage',
-    },
-    'staticfiles': {
-        'BACKEND': 'whitenoise.storage.CompressedManifestStaticFilesStorage',
-    },
-}
-
-WHITENOISE_MAX_AGE = 31536000 if not DEBUG else 0
+STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field

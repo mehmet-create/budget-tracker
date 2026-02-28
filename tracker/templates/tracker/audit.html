@@ -44,9 +44,10 @@
                     </div>
                     <!-- Quick range buttons -->
                     <div class="d-flex gap-2 mt-2 flex-wrap">
-                        <button type="button" class="btn btn-outline-secondary btn-sm" onclick="setRange(30)">Last 30 days</button>
-                        <button type="button" class="btn btn-outline-secondary btn-sm" onclick="setRange(90)">Last 3 months</button>
                         <button type="button" class="btn btn-outline-secondary btn-sm" onclick="setThisMonth()">This month</button>
+                        <button type="button" class="btn btn-outline-secondary btn-sm" onclick="setLastMonth()">Last month</button>
+                        <button type="button" class="btn btn-outline-secondary btn-sm" onclick="setLast2Months()">Last 2 months</button>
+                        <button type="button" class="btn btn-outline-secondary btn-sm" onclick="setRange(90)">Last 3 months</button>
                     </div>
                 </form>
                 {% if txn_count is not None %}
@@ -225,19 +226,40 @@
 {% block scripts %}
 <script>
 // Quick date range helpers
+// localDate(): formats a Date using local timezone — toISOString() uses UTC
+// which gives the wrong date for users in UTC+ timezones (e.g. Nigeria WAT UTC+1)
+function localDate(d) {
+    const pad = n => String(n).padStart(2, '0');
+    return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+}
 function setRange(days) {
     const end   = new Date();
     const start = new Date();
     start.setDate(start.getDate() - days);
-    document.querySelector('input[name="start_date"]').value = start.toISOString().slice(0,10);
-    document.querySelector('input[name="end_date"]').value   = end.toISOString().slice(0,10);
+    document.querySelector('input[name="start_date"]').value = localDate(start);
+    document.querySelector('input[name="end_date"]').value   = localDate(end);
     document.querySelector('form[method="GET"]').submit();
 }
 function setThisMonth() {
-    const now = new Date();
+    const now   = new Date();
     const start = new Date(now.getFullYear(), now.getMonth(), 1);
-    document.querySelector('input[name="start_date"]').value = start.toISOString().slice(0,10);
-    document.querySelector('input[name="end_date"]').value   = now.toISOString().slice(0,10);
+    document.querySelector('input[name="start_date"]').value = localDate(start);
+    document.querySelector('input[name="end_date"]').value   = localDate(now);
+    document.querySelector('form[method="GET"]').submit();
+}
+function setLastMonth() {
+    const now   = new Date();
+    const start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const end   = new Date(now.getFullYear(), now.getMonth(), 0); // last day of prev month
+    document.querySelector('input[name="start_date"]').value = localDate(start);
+    document.querySelector('input[name="end_date"]').value   = localDate(end);
+    document.querySelector('form[method="GET"]').submit();
+}
+function setLast2Months() {
+    const now   = new Date();
+    const start = new Date(now.getFullYear(), now.getMonth() - 1, 1); // 1st of last month
+    document.querySelector('input[name="start_date"]').value = localDate(start);
+    document.querySelector('input[name="end_date"]').value   = localDate(now);
     document.querySelector('form[method="GET"]').submit();
 }
 

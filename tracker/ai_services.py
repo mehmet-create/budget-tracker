@@ -113,19 +113,22 @@ def scan_receipt(image_file):
 
 # ── Spend Audit — Groq Llama (14,400 req/day free, no quota issues) ──────────
 
-def audit_subscriptions(transaction_text: str, start_date: str = None, end_date: str = None):
+def audit_subscriptions(transaction_text: str, start_date: str = None, end_date: str = None, goals_summary: str = ""):
     period_note = ""
     if start_date and end_date:
         period_note = f"The transactions are from {start_date} to {end_date}.\n"
     elif start_date:
         period_note = f"The transactions start from {start_date}.\n"
 
+    goals_block = f"\n{goals_summary}\n" if goals_summary else ""
     prompt = f"""You are a personal finance assistant helping a Nigerian user analyse their bank transactions.
 {period_note}
+{goals_block}
 Analyse the following transactions and identify:
 1. Recurring subscriptions (Netflix, DSTV, Spotify, GOtv, Showmax, betting apps, etc.)
 2. Potential duplicate payments (same service charged more than once)
 3. Any unusual or unexpected charges worth flagging
+4. If budget goals are listed above: mention which categories are over or near their limit
 
 Transactions:
 {transaction_text}
@@ -142,13 +145,14 @@ Return a valid JSON object exactly like this structure:
     }}
   ],
   "total_subscription_spend": 12000,
-  "summary": "One paragraph summary of findings."
+  "summary": "One paragraph: what subscriptions were found, total cost, and how spending compares to the budget goals if provided."
 }}
 
 Rules:
 - "status" must be one of: "Active", "Potential Duplicate", "Review"
 - "cost" must be a plain number (no currency symbols)
 - If no subscriptions found, return empty list with a helpful summary
+- ALWAYS reference budget goals in the summary when they are provided
 - Return ONLY the JSON, no markdown fences"""
 
     try:
