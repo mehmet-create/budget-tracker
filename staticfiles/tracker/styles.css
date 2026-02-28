@@ -1,4 +1,393 @@
-body {
-    background-color: white;
-    color: black;
+/* ============================================================
+   BudgetApp — Main Stylesheet
+   tracker/static/tracker/styles.css
+   ============================================================ */
+
+/* ── Variables ─────────────────────────────────────────────── */
+:root {
+    --primary:        #0d6efd;
+    --primary-dark:   #0a58ca;
+    --success:        #198754;
+    --danger:         #dc3545;
+    --body-bg:        #f4f6fb;
+    --card-radius:    12px;
+    --shadow-sm:      0 2px 8px rgba(0,0,0,0.06);
+    --shadow-md:      0 6px 20px rgba(0,0,0,0.10);
+    --transition:     0.2s ease;
 }
+
+/* ── Base ───────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
+
+body {
+    background-color: var(--body-bg);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    font-size: 16px;   /* Keep base at 16px — don't shrink it */
+    color: #212529;
+}
+
+/* ── Container width — use Bootstrap's fluid-ish default ────── */
+/* Don't constrain it further; let Bootstrap handle breakpoints */
+
+/* ── Navbar ─────────────────────────────────────────────────── */
+.navbar {
+    box-shadow: 0 2px 10px rgba(0,0,0,0.10);
+    min-height: 58px;
+}
+
+.navbar-brand {
+    font-size: 1.2rem;
+    font-weight: 700;
+}
+
+#currencySelect {
+    max-width: 130px;
+    font-size: 0.85rem;
+    cursor: pointer;
+}
+
+/* ── Cards ──────────────────────────────────────────────────── */
+.card {
+    border: none;
+    border-radius: var(--card-radius);
+    box-shadow: var(--shadow-sm);
+    transition: transform var(--transition), box-shadow var(--transition);
+}
+
+.card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
+}
+
+/* ── Stat Cards — DESKTOP sizes, not tiny ───────────────────── */
+.stat-value {
+    font-size: 1.5rem;     /* Was clamp(0.85rem...) — now properly big */
+    font-weight: 700;
+    margin-bottom: 0;
+    line-height: 1.2;
+}
+
+.stat-label {
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 4px;
+    color: #6c757d;
+}
+
+/* ── Icon Shape ─────────────────────────────────────────────── */
+.icon-shape {
+    width: 44px;
+    height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+/* ── Tables ─────────────────────────────────────────────────── */
+.table-responsive { -webkit-overflow-scrolling: touch; }
+td, th { word-break: break-word; }
+
+/* ── Table text — readable on desktop, not tiny ─────────────── */
+.table td, .table th {
+    font-size: 0.95rem;
+    vertical-align: middle;
+}
+
+/* ── Alerts / Messages ──────────────────────────────────────── */
+.messages-container { position: relative; z-index: 10; }
+
+/* ── Form Labels ─────────────────────────────────────────────── */
+.form-label {
+    font-size: 0.82rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #6c757d;
+    margin-bottom: 5px;
+}
+
+/* ── Auth Pages ─────────────────────────────────────────────── */
+.auth-card {
+    border: none;
+    border-radius: var(--card-radius);
+    box-shadow: 0 4px 28px rgba(0,0,0,0.09);
+}
+
+.auth-icon {
+    width: 60px;
+    height: 60px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+}
+
+/* ── Verification Code Input ────────────────────────────────── */
+.code-input {
+    letter-spacing: 0.5rem;
+    font-size: 2rem;
+    font-weight: 700;
+    text-align: center;
+}
+
+/* ── Progress Bars ──────────────────────────────────────────── */
+.progress { border-radius: 100px; }
+
+/* ── Buttons ────────────────────────────────────────────────── */
+.btn { border-radius: 8px; font-weight: 500; }
+.btn-lg { border-radius: 10px; }
+
+/* ── Page layout ─────────────────────────────────────────────── */
+.main-content {
+    flex: 1;
+    padding-bottom: 2rem;
+}
+
+footer { margin-top: auto; }
+
+/* ── Card header — visible readable size ─────────────────────── */
+.card-header h5,
+.card-header h6 {
+    font-size: 1rem;
+    margin-bottom: 0;
+}
+
+/* ── Section headings in cards ───────────────────────────────── */
+.card-body h5 { font-size: 1rem; }
+.card-body h6 { font-size: 0.9rem; }
+
+/* ── Transaction rows ────────────────────────────────────────── */
+.txn-row {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 12px 4px;
+    border-bottom: 1px solid #f0f0f0;
+}
+.txn-row:last-child { border-bottom: none; }
+
+.txn-avatar {
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    font-size: 1rem;
+}
+
+.txn-desc {
+    font-weight: 600;
+    font-size: 0.95rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 180px;
+}
+
+.txn-meta {
+    font-size: 0.8rem;
+    color: #6c757d;
+}
+
+.txn-amount {
+    font-weight: 700;
+    font-size: 0.95rem;
+    white-space: nowrap;
+}
+
+/* ── Charts ─────────────────────────────────────────────────── */
+.chart-container {
+    position: relative;
+    height: 320px;   /* Slightly taller on desktop */
+}
+
+/* ── Goals ──────────────────────────────────────────────────── */
+.goal-row {
+    padding: 14px 0;
+    border-bottom: 1px solid #f0f0f0;
+}
+.goal-row:last-child { border-bottom: none; }
+
+/* ── Promo / Audit card ──────────────────────────────────────── */
+.promo-card {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-radius: var(--card-radius);
+    color: #fff;
+}
+
+/* ── Danger zone ─────────────────────────────────────────────── */
+.danger-card { border-top: 4px solid var(--danger) !important; }
+
+/* ── Receipt card ─────────────────────────────────────────────── */
+.receipt-card {
+    background-color: #f8f9fa;
+    border-radius: var(--card-radius);
+}
+
+/* ── Empty states ─────────────────────────────────────────────── */
+.empty-state {
+    text-align: center;
+    padding: 3rem 1rem;
+    color: #6c757d;
+}
+.empty-state i { opacity: 0.25; margin-bottom: 1rem; }
+
+/* ── Pagination ───────────────────────────────────────────────── */
+.page-link { border-radius: 6px !important; margin: 0 2px; }
+
+/* ── Mobile bottom nav ────────────────────────────────────────── */
+.mobile-bottom-nav {
+    display: none;    /* Hidden by default (desktop) */
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: #fff;
+    border-top: 1px solid #dee2e6;
+    z-index: 1030;
+    padding: 6px 0 max(6px, env(safe-area-inset-bottom));
+    box-shadow: 0 -2px 12px rgba(0,0,0,0.08);
+}
+
+.mobile-bottom-nav .nav-items {
+    display: flex;
+    justify-content: space-around;
+    align-items: center;
+}
+
+.mobile-bottom-nav a {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    color: #6c757d;
+    text-decoration: none;
+    font-size: 0.7rem;
+    font-weight: 500;
+    padding: 4px 10px;
+    border-radius: 8px;
+    transition: color var(--transition);
+    min-width: 56px;
+}
+
+.mobile-bottom-nav a i { font-size: 1.2rem; }
+.mobile-bottom-nav a.active,
+.mobile-bottom-nav a:hover { color: var(--primary); }
+
+/* ═══════════════════════════════════════════════════════════════
+   RESPONSIVE BREAKPOINTS
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ── Desktop (≥992px): normal navbar, NO mobile bottom nav ─── */
+@media (min-width: 992px) {
+    .mobile-bottom-nav  { display: none !important; }
+    .navbar-collapse    { display: flex !important; }
+}
+
+/* ── Tablet / small laptop (<992px): switch to bottom nav ──── */
+@media (max-width: 991.98px) {
+    .mobile-bottom-nav { display: block; }
+    /* Collapse the top navbar links — keep brand + currency picker */
+    .navbar .navbar-collapse { display: none !important; }
+    .navbar-toggler { display: none !important; }
+    /* Push page content above the bottom bar */
+    body.authenticated { padding-bottom: 72px; }
+}
+
+/* ── Mobile (≤767px) ─────────────────────────────────────────── */
+@media (max-width: 767.98px) {
+    .stat-value { font-size: 1.1rem; }
+    .stat-label { font-size: 0.65rem; }
+    .card-body  { padding: 0.875rem !important; }
+    .txn-desc   { max-width: 120px; }
+}
+
+/* ── Small phones (≤575px) ───────────────────────────────────── */
+@media (max-width: 575.98px) {
+    .btn-lg { font-size: 0.95rem; padding: 0.6rem 1rem; }
+    h2      { font-size: 1.5rem; }
+    h3      { font-size: 1.2rem; }
+}
+
+/* ── Mobile profile popup menu ──────────────────────────── */
+.mobile-profile-wrap {
+    position: relative;
+}
+
+.mobile-profile-menu {
+    display: none;
+    position: absolute;
+    bottom: 100%;
+    right: 0;
+    background: #fff;
+    border-radius: 12px;
+    box-shadow: 0 -4px 24px rgba(0,0,0,0.15);
+    min-width: 160px;
+    padding: 8px 0;
+    margin-bottom: 8px;
+    z-index: 1040;
+}
+
+.mobile-profile-menu.show { display: block; }
+
+.mobile-profile-menu a,
+.mobile-profile-menu button {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    /* Identical padding — text starts at the same x-position for both */
+    padding: 10px 16px;
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: #212529;
+    text-decoration: none;
+    background: none;
+    /* Reset every browser button default that can shift content */
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+    margin: 0;
+    text-align: left;
+    line-height: 1.4;
+    cursor: pointer;
+}
+
+/* fa-fw makes all FontAwesome icons the same fixed width so text columns line up */
+
+.mobile-profile-menu a:hover,
+.mobile-profile-menu button:hover {
+    background: #f8f9fa;
+}
+
+/* ── Mobile add button — make it pop ───────────────────── */
+.mobile-add-btn i {
+    font-size: 1.6rem;
+    color: var(--primary);
+}
+/* Standalone mobile menu button helper (used in base.html logout form) */
+.mobile-menu-btn {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    padding: 10px 16px;
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: #212529;
+    background: none;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+    margin: 0;
+    text-align: left;
+    line-height: 1.4;
+    cursor: pointer;
+}
+.mobile-menu-btn:hover { background: #f8f9fa; }
