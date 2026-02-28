@@ -156,18 +156,25 @@ CACHES = {
     }
 }
 
-if DEBUG:
-    # DEVELOPMENT (LOCAL) SETTINGS: GMAIL
+# Email provider selection
+# Priority:
+# 1) Explicit EMAIL_PROVIDER env var (gmail/resend)
+# 2) Auto-detect Render => resend, otherwise gmail
+EMAIL_PROVIDER = os.environ.get('EMAIL_PROVIDER', '').strip().lower()
+if not EMAIL_PROVIDER:
+    EMAIL_PROVIDER = 'resend' if os.environ.get('RENDER_EXTERNAL_HOSTNAME') else 'gmail'
+
+if EMAIL_PROVIDER == 'gmail':
+    # LOCAL / OFFLINE: GMAIL SMTP
     EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
     EMAIL_HOST = 'smtp.gmail.com'
     EMAIL_PORT = 587
     EMAIL_USE_TLS = True
     EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER')
     EMAIL_HOST_PASSWORD = os.environ.get('GMAIL_APP_PASSWORD')
-    DEFAULT_FROM_EMAIL = f"BudgetApp <{os.environ.get('EMAIL_HOST_USER')}>"
-
+    DEFAULT_FROM_EMAIL = f"BudgetApp <{EMAIL_HOST_USER or 'no-reply@localhost'}>"
 else:
-    # PRODUCTION (ONLINE) SETTINGS: RESEND
+    # ONLINE / RENDER: RESEND SMTP
     EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
     EMAIL_HOST = 'smtp.resend.com'
     EMAIL_TIMEOUT = 10
@@ -175,7 +182,7 @@ else:
     EMAIL_USE_TLS = True
     EMAIL_HOST_USER = 'resend'
     EMAIL_HOST_PASSWORD = os.environ.get('RESEND_API_KEY')
-    DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL', 'onboarding@resend.dev') # Or your verified domain
+    DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL', 'onboarding@resend.dev')
 
 RESEND_API_KEY = os.environ.get('RESEND_API_KEY')
 

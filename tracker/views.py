@@ -443,6 +443,10 @@ def cancel_registration(request):
     return redirect('register')
 
 class CustomPasswordResetView(PasswordResetView):
+    email_template_name = 'tracker/password_reset_email.html'
+    subject_template_name = 'tracker/password_reset_subject.txt'
+    from_email = settings.DEFAULT_FROM_EMAIL
+
     def dispatch(self, request, *args, **kwargs):
         # Rate limit: 5 password reset attempts per hour per IP
         ip = request.META.get('HTTP_X_FORWARDED_FOR', '').split(',')[0].strip() or request.META.get('REMOTE_ADDR', '')
@@ -467,7 +471,17 @@ class CustomPasswordResetView(PasswordResetView):
             'extra_email_context': self.extra_email_context,
         }
         # Call form.save() once only — super().form_valid() would call it again
-        form.save(**opts)
+        try:
+            form.save(**opts)
+        except Exception as exc:
+            logger.exception("Password reset email dispatch failed: %s", exc)
+            if is_json_request(self.request):
+                return JsonResponse({
+                    'status': 'error',
+                    'message': 'Could not send reset email right now. Please try again shortly.'
+                }, status=503)
+            messages.error(self.request, 'Could not send reset email right now. Please try again shortly.')
+            return redirect('password_reset')
 
         if is_json_request(self.request):
             return JsonResponse({
