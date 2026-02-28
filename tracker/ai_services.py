@@ -9,11 +9,20 @@ from google.genai.types import HttpOptions
 
 logger = logging.getLogger(__name__)
 
-# ── Gemini client — receipt scanning only (needs vision) ─────────────────────
-gemini_client = genai.Client(
-    api_key=settings.GEMINI_API_KEY,
-    http_options=HttpOptions(api_version="v1beta")
-)
+# ── Gemini client — lazy init so a bad/missing key doesn't crash startup ─────
+_gemini_client = None
+
+def _get_gemini_client():
+    global _gemini_client
+    if _gemini_client is None:
+        api_key = getattr(settings, 'GEMINI_API_KEY', None)
+        if not api_key:
+            raise ValueError("GEMINI_API_KEY is not set in environment")
+        _gemini_client = genai.Client(
+            api_key=api_key,
+            http_options=HttpOptions(api_version="v1beta")
+        )
+    return _gemini_client
 
 
 def _groq_chat(prompt: str, max_tokens: int = 2048) -> str:
@@ -82,7 +91,7 @@ def scan_receipt(image_file):
         - "category": One of [food, transport, bills, housing, entertainment, shopping, health, education, other].
         """
 
-        response = gemini_client.models.generate_content(
+        response = _get_gemini_client().models.generate_content(
             model='gemini-2.5-flash',
             contents=[prompt, img]
         )

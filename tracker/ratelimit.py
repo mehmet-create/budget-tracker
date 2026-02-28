@@ -1,4 +1,7 @@
+import logging
 from django.core.cache import cache
+
+logger = logging.getLogger(__name__)
 
 
 class RateLimitError(Exception):
@@ -8,7 +11,8 @@ class RateLimitError(Exception):
 def check_ratelimit(key_prefix: str, limit: int = 5, period: int = 60) -> bool:
     """
     Lightweight rate limiter using Django's cache backend.
-    Gracefully falls back if cache is unavailable.
+    RateLimitError is intentionally NOT caught here — callers must handle it.
+    Only genuine cache backend failures are caught and logged.
     """
     key = f"ratelimit:{key_prefix}"
 
@@ -20,14 +24,18 @@ def check_ratelimit(key_prefix: str, limit: int = 5, period: int = 60) -> bool:
             return True
 
         if current >= limit:
-            raise RateLimitError("Too many requests. Please try again later.")
+            # Raise BEFORE the except — so it propagates to the caller
+            raise RateLimitError("Too many attempts. Please try again later.")
 
         cache.incr(key)
         return True
+
+    except RateLimitError:
+        # Re-raise — never swallow this, it's intentional flow control
+        raise
+
     except Exception as e:
-        # If cache fails, log it but don't block login
-        # Rate limiting will be unavailable but the app will still work
-        import logging
-        logger = logging.getLogger(__name__)
-        logger.error(f"Cache error in rate limiting: {e}")
-        return True  # Allow the request through if cache is down
+        # Only real cache errors land here (Redis down, serialisation error, etc.)
+        logger.error("Cache backend error in rate limiter (key=%s): %s", key, e)
+        # Fail open: let the request through rather than locking everyone out
+        return True

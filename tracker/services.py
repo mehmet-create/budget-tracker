@@ -203,8 +203,9 @@ def verify_email_change(data: VerifyEmailChangeDTO):
 
 
 def change_password(user, data: PasswordChangeDTO):
-    user = User.objects.get(id=data.user_id)
-
+    # Operate on the passed user object — never re-fetch from DB.
+    # A re-fetched object is different in memory, so update_session_auth_hash()
+    # in the view would get a stale hash and Django logs the user out immediately.
     if not user.check_password(data.old_password):
         return False, "Old password is incorrect."
     if data.new_password == data.old_password:

@@ -33,6 +33,9 @@ DEBUG = os.getenv('DEBUG') == 'True'
 
 ALLOWED_HOSTS = ['127.0.0.1', 'localhost', '0.0.0.0']
 
+# Add any custom domain here when you attach one:
+# ALLOWED_HOSTS += ['yourdomain.com', 'www.yourdomain.com']
+
 # Add Render host if it exists in the environment
 render_host = os.getenv('RENDER_EXTERNAL_HOSTNAME')
 if render_host:
@@ -40,12 +43,16 @@ if render_host:
 
 # CSRF Trusted Origins (Critical for Render forms)
 CSRF_TRUSTED_ORIGINS = ['http://localhost:8000', 'http://127.0.0.1:8000']
+# Add custom domain here when you attach one:
+# CSRF_TRUSTED_ORIGINS += ['https://yourdomain.com', 'https://www.yourdomain.com']
 if render_host:
     CSRF_TRUSTED_ORIGINS.append(f"https://{render_host}")
 
 # Security Headers for Production
 if not DEBUG:
     SECURE_SSL_REDIRECT = True
+    # Tell Django to trust X-Forwarded-Proto from Render's proxy
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
     SECURE_HSTS_SECONDS = 31536000
@@ -87,46 +94,37 @@ MIDDLEWARE = [
 
 ROOT_URLCONF = 'budget.urls'
 
-# In production: cached loader compiles each template once, massive speed gain.
-# In dev: APP_DIRS=True so template changes are picked up immediately.
-if DEBUG:
-    TEMPLATES = [
-        {
-            'BACKEND': 'django.template.backends.django.DjangoTemplates',
-            'DIRS': [BASE_DIR / 'templates'],
-            'APP_DIRS': True,
-            'OPTIONS': {
-                'context_processors': [
-                    'django.template.context_processors.request',
-                    'django.contrib.auth.context_processors.auth',
-                    'django.contrib.messages.context_processors.messages',
-                    'tracker.context_processors.currency_symbol',
-                ],
-            },
+if not DEBUG:
+    try:
+        from django.template.loaders.cached import Loader  # noqa
+        _template_dirs = None
+    except Exception:
+        pass
+
+TEMPLATES = [
+    {
+        'BACKEND': 'django.template.backends.django.DjangoTemplates',
+        'DIRS': [BASE_DIR / 'templates'],
+        'APP_DIRS': False,
+        'OPTIONS': {
+            'loaders': [
+                ('django.template.loaders.cached.Loader', [
+                    'django.template.loaders.filesystem.Loader',
+                    'django.template.loaders.app_directories.Loader',
+                ]) if not DEBUG else 'django.template.loaders.app_directories.Loader',
+            ] if not DEBUG else [
+                'django.template.loaders.filesystem.Loader',
+                'django.template.loaders.app_directories.Loader',
+            ],
+            'context_processors': [
+                'django.template.context_processors.request',
+                'django.contrib.auth.context_processors.auth',
+                'django.contrib.messages.context_processors.messages',
+                'tracker.context_processors.currency_symbol',
+            ],
         },
-    ]
-else:
-    TEMPLATES = [
-        {
-            'BACKEND': 'django.template.backends.django.DjangoTemplates',
-            'DIRS': [BASE_DIR / 'templates'],
-            'APP_DIRS': False,
-            'OPTIONS': {
-                'loaders': [
-                    ('django.template.loaders.cached.Loader', [
-                        'django.template.loaders.filesystem.Loader',
-                        'django.template.loaders.app_directories.Loader',
-                    ]),
-                ],
-                'context_processors': [
-                    'django.template.context_processors.request',
-                    'django.contrib.auth.context_processors.auth',
-                    'django.contrib.messages.context_processors.messages',
-                    'tracker.context_processors.currency_symbol',
-                ],
-            },
-        },
-    ]
+    },
+]
 
 WSGI_APPLICATION = 'budget.wsgi.application'
 
@@ -145,6 +143,9 @@ DATABASES['default']['ATOMIC_REQUESTS'] = False
 DATABASES['default']['CONN_MAX_AGE'] = 60 
 
 # Cache Configuration
+# WARNING: LocMemCache is per-process — rate limiting is unreliable with 3+ workers.
+# Upgrade to Redis for consistent auth protection:
+# pip install django-redis  →  CACHES = {'default': {'BACKEND': 'django_redis.cache.RedisCache', 'LOCATION': os.getenv('REDIS_URL')}}
 CACHES = {
     'default': {
         'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
@@ -234,9 +235,6 @@ LOGIN_URL = 'login'
 
 # ERROR HANDLERS
 CSRF_FAILURE_VIEW = 'tracker.views.csrf_failure_json'
-
-# Tell @login_required where to redirect unauthenticated users
-LOGIN_URL = 'login'
 GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY')
 GROQ_API_KEY = os.environ.get('GROQ_API_KEY')
 

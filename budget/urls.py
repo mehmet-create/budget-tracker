@@ -19,6 +19,12 @@ from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
 
+# Error handlers must live in the ROOT URLconf (this file), not in app urls.py
+handler400 = 'tracker.views.custom_400_handler'
+handler403 = 'tracker.views.custom_403_handler'
+handler404 = 'tracker.views.custom_404_handler'
+handler500 = 'tracker.views.custom_500_handler'
+
 urlpatterns = [
     path('secure-admin-9f3k76/', admin.site.urls),
     path('', include('tracker.urls')),

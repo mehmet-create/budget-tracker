@@ -60,18 +60,20 @@ def is_json_request(request):
 
 def login_view(request):
     ip = get_ip(request)
-    username = request.POST.get('username', '').strip()
-    
-    # Composite key: Blocks "IP + Username" pair
-    ratelimit_key = f"login_fail_{ip}_{username}" if username else f"login_fail_{ip}"
-    
-    try:
-        check_ratelimit(ratelimit_key, limit=10, period=60)
-    except RateLimitError as e:
-        if is_json_request(request):
-            return JsonResponse({'error': str(e)}, status=429)
-        messages.error(request, str(e))
-        return render(request, 'tracker/login.html')
+
+    if request.method == 'POST':
+        username = request.POST.get('username', '').strip()
+        # Composite key: blocks IP+username pair — only on POST, never on GET
+        ratelimit_key = f"login_fail_{ip}_{username}" if username else f"login_fail_{ip}"
+        try:
+            check_ratelimit(ratelimit_key, limit=10, period=60)
+        except RateLimitError as e:
+            if is_json_request(request):
+                return JsonResponse({'error': str(e)}, status=429)
+            messages.error(request, str(e))
+            return render(request, 'tracker/login.html')
+    else:
+        ratelimit_key = f"login_fail_{ip}"
 
     if request.method == 'POST':
         dto = schemas.LoginDTO(
@@ -89,9 +91,10 @@ def login_view(request):
             return redirect('dashboard')
 
         else:
-            current_history = cache.get(f"ratelimit:{ratelimit_key}", [])
-            attempts_used = len(current_history)
-            remaining = 10 - attempts_used
+            attempts_used = cache.get(f"ratelimit:{ratelimit_key}", 0)
+            if not isinstance(attempts_used, int):
+                attempts_used = 0
+            remaining = max(0, 10 - attempts_used)
             
             error_msg = "Invalid credentials."
             if status == "unverified":
@@ -114,13 +117,14 @@ def login_view(request):
 
 @require_http_methods(["GET", "POST"])
 def register_view(request):
-    try:
-        check_ratelimit(f"reg_ip_{get_ip(request)}", limit=50, period=3600)
-    except RateLimitError as e:
-        if is_json_request(request): 
-            return JsonResponse({'status': 'error', 'message': str(e)}, status=429)
-        messages.error(request, str(e))
-        return redirect('login')
+    if request.method == 'POST':
+        try:
+            check_ratelimit(f"reg_ip_{get_ip(request)}", limit=50, period=3600)
+        except RateLimitError as e:
+            if is_json_request(request): 
+                return JsonResponse({'status': 'error', 'message': str(e)}, status=429)
+            messages.error(request, str(e))
+            return redirect('login')
 
     if request.method == 'POST':
         if request.content_type == 'application/json':
@@ -185,13 +189,6 @@ def register_view(request):
 
 @require_http_methods(["GET", "POST"])
 def verify_registration(request):
-    try:
-        check_ratelimit(f"verify_ip_{get_ip(request)}", limit=5, period=900)
-    except RateLimitError as e:
-        if is_json_request(request): 
-            return JsonResponse({'status': 'error', 'message': str(e)}, status=429)
-        messages.error(request, str(e))
-        return redirect('register')
     user_id = request.session.get('unverified_user_id')
     
     if not user_id:
@@ -362,9 +359,11 @@ def password_change_view(request):
                 new_password=data.get('new_password1'),
                 confirm_new_password=data.get('new_password2')
             )
-            success, msg = services.change_password(user, dto)
+            success, msg = services.change_password(request.user, dto)
             if success:
-                update_session_auth_hash(request, user)
+                # refresh_from_db() ensures the session hash reflects the NEW password
+                request.user.refresh_from_db()
+                update_session_auth_hash(request, request.user)
                 
                 if is_json_request(request): 
                     return JsonResponse({'status': 'success', 'message': msg})
@@ -423,12 +422,14 @@ def delete_account_view(request):
     return render(request, 'tracker/delete_account.html')
 
 
+@require_POST
 def logout_view(request):
     logout(request)
     if is_json_request(request): return JsonResponse({'status': 'logged_out'})
     return redirect('login')
 
 
+@require_POST
 def cancel_registration(request):
     uid = request.session.get('unverified_user_id')
     if uid:
@@ -465,6 +466,7 @@ class CustomPasswordResetView(PasswordResetView):
             'html_email_template_name': self.html_email_template_name,
             'extra_email_context': self.extra_email_context,
         }
+        # Call form.save() once only — super().form_valid() would call it again
         form.save(**opts)
 
         if is_json_request(self.request):
@@ -473,7 +475,10 @@ class CustomPasswordResetView(PasswordResetView):
                 'message': 'Password reset instructions have been sent to your email.'
             })
 
-        return super().form_valid(form)
+        # Redirect manually instead of calling super() to avoid double email send
+        from django.http import HttpResponseRedirect
+        from django.urls import reverse
+        return HttpResponseRedirect(reverse('password_reset_done'))
 
     def form_invalid(self, form):
         if is_json_request(self.request):
@@ -660,7 +665,7 @@ def dashboard(request):
         json_goals = [{
             'category': g.get_category_display(),
             'target': float(g.target_amount),
-            'spent': float(g.spent),
+            'spent': float(g.actual_spent),
             'percent': g.percent,
             'status': g.status
         } for g in goal_progress]
@@ -887,7 +892,8 @@ def edit_transaction(request, pk):
     else:
         form = TransactionForm(instance=transaction)
 
-    return render(request, "tracker/editTransaction.html", {"form": form, "transaction": transaction})
+    # Template removed — edits are done via modal on the list page
+    return redirect("transactions")
 
 
 @login_required
@@ -916,7 +922,8 @@ def delete_transaction(request, pk):
     if is_json_request(request):
         return JsonResponse({'status': 'warning', 'message': 'Send DELETE/POST to confirm.'})
         
-    return render(request, 'tracker/delete_confirm.html', {'transaction': transaction})
+    # Template removed — deletions are done via modal on the list page
+    return redirect('transactions')
 
 def validate_file_extension(filename):
     if not filename.endswith(('.xlsx', '.csv')):
@@ -1221,7 +1228,8 @@ def edit_goal(request, pk):
     else:
         form = BudgetGoalForm(instance=goal)
 
-    return render(request, 'tracker/edit_goal.html', {'form': form, 'goal': goal})
+    # Template removed — edits are done via modal on the goals page
+    return redirect('goals_list')
 
 @login_required
 @require_http_methods(["GET", "POST", "DELETE"])
@@ -1247,7 +1255,8 @@ def delete_goal(request, pk):
     if is_json_request(request):
         return JsonResponse({'status': 'warning', 'message': 'Send DELETE/POST to confirm.'})
 
-    return render(request, 'tracker/delete_goal.html', {'goal': goal})
+    # Template removed — deletions are done via modal on the goals page
+    return redirect('goals_list')
 
 
 @require_POST
@@ -1332,7 +1341,11 @@ def change_currency(request):
             return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
         messages.error(request, str(e))
         
-    return redirect(request.META.get('HTTP_REFERER', 'dashboard'))
+    # Never trust raw Referer — use Django URL reversing as fallback
+    referer = request.META.get('HTTP_REFERER', '')
+    from django.urls import reverse
+    safe_fallback = reverse('dashboard')
+    return redirect(referer if referer else safe_fallback)
 
 
 @require_POST
@@ -1435,8 +1448,16 @@ def profile_settings(request):
             form = ProfileUpdateForm(post_data, instance=user)
             
             if form.is_valid():
-                form.save()
-                
+                try:
+                    form.save()
+                except Exception:
+                    from django.db import IntegrityError
+                    msg = "That username is already taken."
+                    if is_json_request(request):
+                        return JsonResponse({'status': 'error', 'message': msg}, status=400)
+                    messages.error(request, msg)
+                    return render(request, 'tracker/profile.html', {'form': form})
+
                 if is_json_request(request): 
                     user_profile = user.userprofile
                     return JsonResponse({
@@ -1483,6 +1504,10 @@ def password_change_done_custom(request):
         })
 
     return render(request, 'tracker/password_change_done.html')
+
+def custom_400_handler(request, exception=None):
+    if is_json_request(request): return JsonResponse({'error': 'Bad Request'}, status=400)
+    return render(request, 'errors/400.html', status=400)
 
 def custom_403_handler(request, exception=None):
     if is_json_request(request): return JsonResponse({'error': 'Forbidden'}, status=403)

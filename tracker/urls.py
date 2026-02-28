@@ -47,6 +47,4 @@ urlpatterns = [
     path('password-reset-complete/', views.CustomPasswordResetCompleteView.as_view(template_name='tracker/password_reset_complete.html'), name='password_reset_complete'),
     ]
 
-handler403 = 'tracker.views.custom_403_handler'
-handler404 = 'tracker.views.custom_404_handler'
-handler500 = 'tracker.views.custom_500_handler'
+# handler500 = 'tracker.views.custom_500_handler'  ← moved to budget/urls.py (root URLconf)
