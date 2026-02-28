@@ -45,8 +45,9 @@ logger = logging.getLogger(__name__)
 User = get_user_model()
 
 
-@require_GET
+@require_http_methods(["GET", "POST", "HEAD"])
 def health(request):
+    """Health check endpoint for uptime monitoring. Allows GET, POST, HEAD."""
     return JsonResponse({'status': 'ok'})
 
 def get_ip(request):
