@@ -663,7 +663,8 @@ def dashboard(request):
 
     recent_transactions = Transaction.objects.filter(user=user).order_by('-date', '-id')[:5]
 
-    totals = Transaction.objects.filter(
+    # Monthly totals
+    monthly_totals = Transaction.objects.filter(
         user=user,
         date__month=current_month,
         date__year=current_year
@@ -672,8 +673,18 @@ def dashboard(request):
         expense=Sum('amount', filter=Q(type='Expense'))
     )
     
-    total_income = totals['income'] or Decimal('0.00')
-    total_expense = totals['expense'] or Decimal('0.00')
+    monthly_income = monthly_totals['income'] or Decimal('0.00')
+    monthly_expense = monthly_totals['expense'] or Decimal('0.00')
+    monthly_balance = monthly_income - monthly_expense
+
+    # Overall totals (all-time)
+    overall_totals = Transaction.objects.filter(user=user).aggregate(
+        income=Sum('amount', filter=Q(type='Income')),
+        expense=Sum('amount', filter=Q(type='Expense'))
+    )
+    
+    total_income = overall_totals['income'] or Decimal('0.00')
+    total_expense = overall_totals['expense'] or Decimal('0.00')
     balance = total_income - total_expense
 
     if is_json_request(request):
@@ -694,6 +705,9 @@ def dashboard(request):
                 'total_income': float(total_income),
                 'total_expense': float(total_expense),
                 'balance': float(balance),
+                'monthly_income': float(monthly_income),
+                'monthly_expense': float(monthly_expense),
+                'monthly_balance': float(monthly_balance),
                 'goal_progress': json_goals,
                 'transactions': json_trans
             }
@@ -705,6 +719,9 @@ def dashboard(request):
         'total_income': total_income,
         'total_expense': total_expense,
         'balance': balance,
+        'monthly_income': monthly_income,
+        'monthly_expense': monthly_expense,
+        'monthly_balance': monthly_balance,
         'current_month': now,
     }
 
