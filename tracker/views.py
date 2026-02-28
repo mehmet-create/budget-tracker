@@ -33,7 +33,7 @@ from django.views.decorators.http import require_POST, require_GET, require_http
 from django.core.files.storage import default_storage
 from django.db import transaction
 from .models import Transaction, BudgetGoal, UserProfile, BudgetLock
-from .forms import SignUpForm, BudgetGoalForm, ProfileUpdateForm, TransactionForm, CSVUploadForm
+from .forms import SignUpForm, BudgetGoalForm, ProfileUpdateForm, TransactionForm, CSVUploadForm, CustomPasswordResetForm
 from . import services, schemas
 from .ratelimit import check_ratelimit, RateLimitError
 from .ai_services import scan_receipt
@@ -446,6 +446,7 @@ class CustomPasswordResetView(PasswordResetView):
     email_template_name = 'tracker/password_reset_email.html'
     subject_template_name = 'tracker/password_reset_subject.txt'
     from_email = settings.DEFAULT_FROM_EMAIL
+    form_class = CustomPasswordResetForm
 
     def dispatch(self, request, *args, **kwargs):
         # Rate limit: 5 password reset attempts per hour per IP
@@ -460,29 +461,24 @@ class CustomPasswordResetView(PasswordResetView):
         return super().dispatch(request, *args, **kwargs)
 
     def form_valid(self, form):
-        opts = {
-            'use_https': self.request.is_secure(),
-            'token_generator': self.token_generator,
-            'from_email': self.from_email,
-            'email_template_name': self.email_template_name,
-            'subject_template_name': self.subject_template_name,
-            'request': self.request,
-            'html_email_template_name': self.html_email_template_name,
-            'extra_email_context': self.extra_email_context,
-        }
-        # Call form.save() once only — super().form_valid() would call it again
+        """Form is valid — custom form.save() handles email via Resend HTTP API."""
         try:
-            logger.info(f"Password reset requested for: {form.cleaned_data.get('email')} | Backend: {settings.EMAIL_PROVIDER} | Host: {settings.EMAIL_HOST}")
-            form.save(**opts)
-            logger.info(f"Password reset email sent successfully for: {form.cleaned_data.get('email')}")
+            form.save(
+                domain_override=self.request.get_host(),
+                subject_template_name=self.subject_template_name,
+                email_template_name=self.email_template_name,
+                use_https=self.request.is_secure(),
+                from_email=self.from_email,
+                request=self.request,
+            )
         except Exception as exc:
-            logger.exception("Password reset email dispatch failed: %s", exc)
+            logger.exception("Password reset form.save() failed: %s", exc)
             if is_json_request(self.request):
                 return JsonResponse({
                     'status': 'error',
-                    'message': 'Could not send reset email right now. Please try again shortly.'
+                    'message': 'Could not send reset email. Please try again shortly.'
                 }, status=503)
-            messages.error(self.request, 'Could not send reset email right now. Please try again shortly.')
+            messages.error(self.request, 'Could not send reset email. Please try again shortly.')
             return redirect('password_reset')
 
         if is_json_request(self.request):
@@ -491,7 +487,6 @@ class CustomPasswordResetView(PasswordResetView):
                 'message': 'Password reset instructions have been sent to your email.'
             })
 
-        # Redirect manually instead of calling super() to avoid double email send
         from django.http import HttpResponseRedirect
         from django.urls import reverse
         return HttpResponseRedirect(reverse('password_reset_done'))
@@ -883,6 +878,13 @@ def edit_transaction(request, pk):
         if is_json_request(request): return JsonResponse({'error': 'Not found'}, status=404)
         return render(request, '404.html', status=404)
 
+    # Capture current page from referrer or query string for redirect
+    page = request.GET.get('page')
+    if not page and request.META.get('HTTP_REFERER'):
+        from urllib.parse import urlparse, parse_qs
+        parsed_url = urlparse(request.META['HTTP_REFERER'])
+        page = parse_qs(parsed_url.query).get('page', [None])[0]
+
     if request.method == "POST":
         form = TransactionForm(request.POST, instance=transaction)
         if form.is_valid():
@@ -899,7 +901,10 @@ def edit_transaction(request, pk):
             
             if is_json_request(request): return JsonResponse({'status': 'success', 'message': 'Updated'})
             messages.success(request, 'Transaction updated.')
-            return redirect("transactions")
+            redirect_url = reverse('transactions')
+            if page:
+                redirect_url += f'?page={page}'
+            return redirect(redirect_url)
         
         else:
             if is_json_request(request): return JsonResponse({'status': 'error', 'errors': form.errors}, status=400)
@@ -920,12 +925,22 @@ def delete_transaction(request, pk):
         if is_json_request(request): return JsonResponse({'status': 'error', 'message': 'Unauthorized'}, status=401)
         return redirect('login')
     
+    # Capture current page from referrer or query string for redirect
+    page = request.GET.get('page')
+    if not page and request.META.get('HTTP_REFERER'):
+        from urllib.parse import urlparse, parse_qs
+        parsed_url = urlparse(request.META['HTTP_REFERER'])
+        page = parse_qs(parsed_url.query).get('page', [None])[0]
+    
     if request.method in ["DELETE", "POST"]:
         try:
             services.delete_transaction(pk, user.id)
             if is_json_request(request): return JsonResponse({'status': 'success', 'message': 'Deleted'})
             messages.success(request, 'Transaction deleted.')
-            return redirect('transactions')
+            redirect_url = reverse('transactions')
+            if page:
+                redirect_url += f'?page={page}'
+            return redirect(redirect_url)
         except Exception:
             if is_json_request(request): return JsonResponse({'error': 'Not found'}, status=404)
             return render(request, '404.html', status=404)

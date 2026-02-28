@@ -1,4 +1,4 @@
-from django.contrib.auth.forms import PasswordChangeForm
+from django.contrib.auth.forms import PasswordChangeForm, PasswordResetForm
 from django.contrib.auth.password_validation import (
     MinimumLengthValidator,
     UserAttributeSimilarityValidator,
@@ -192,6 +192,68 @@ class ProfileUpdateForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         for field_name in self.fields:
             self.fields[field_name].widget.attrs['class'] = 'form-control'
+
+
+class CustomPasswordResetForm(PasswordResetForm):
+    """
+    Custom password reset form using send_async_email (Resend HTTP API)
+    instead of Django's SMTP backend for better reliability on Render.
+    """
+    def save(self, domain_override=None, subject_template_name='tracker/password_reset_subject.txt',
+             email_template_name='tracker/password_reset_email.html', use_https=False, token_generator=None,
+             from_email=None, request=None, html_email_template_name=None, extra_email_context=None, **kwargs):
+        """
+        Send password reset email via Resend HTTP API instead of SMTP.
+        """
+        from django.contrib.auth.tokens import default_token_generator
+        from django.contrib.sites.shortcuts import get_current_site
+        from django.template.loader import render_to_string
+        from django.utils.http import urlsafe_base64_encode
+        from django.utils.encoding import force_bytes
+        from .utils import send_async_email
+        import logging
+        
+        logger = logging.getLogger(__name__)
+        
+        if not domain_override:
+            current_site = get_current_site(request)
+            site_name = current_site.name
+            domain = current_site.domain
+        else:
+            site_name = domain_override
+            domain = domain_override
+        
+        token_generator = token_generator or default_token_generator
+        
+        for user in self.get_users(self.cleaned_data['email']):
+            uid = urlsafe_base64_encode(force_bytes(user.pk))
+            token = token_generator.make_token(user)
+            
+            # Build contexts
+            context = {
+                'email': user.email,
+                'domain': domain,
+                'site_name': site_name,
+                'uid': uid,
+                'user': user,
+                'token': token,
+                'protocol': 'https' if use_https else 'http',
+            }
+            if extra_email_context:
+                context.update(extra_email_context)
+            
+            # Render email subject and html
+            subject = render_to_string(subject_template_name, context).strip()
+            html_content = render_to_string(email_template_name, context)
+            
+            # Send via Resend HTTP API
+            logger.info(f"Sending password reset email to {user.email} via Resend HTTP API")
+            success = send_async_email(user.email, subject, html_content)
+            
+            if success:
+                logger.info(f"Password reset email sent successfully to {user.email}")
+            else:
+                logger.error(f"Failed to send password reset email to {user.email}")
 
 
 class CSVUploadForm(forms.Form):
