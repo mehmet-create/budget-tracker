@@ -170,6 +170,7 @@ else:
     # PRODUCTION (ONLINE) SETTINGS: RESEND
     EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
     EMAIL_HOST = 'smtp.resend.com'
+    EMAIL_TIMEOUT = 10
     EMAIL_PORT = 587
     EMAIL_USE_TLS = True
     EMAIL_HOST_USER = 'resend'
