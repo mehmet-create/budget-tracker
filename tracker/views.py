@@ -1041,14 +1041,36 @@ def subscription_audit_view(request):
 
         if combined:
             try:
-                # goals is already deduplicated above — just build the summary string
+                # Compute ACTUAL spending per category from DB for the period
+                # so the AI gets real numbers instead of trying to sum raw text
+                from django.db.models import Sum as AuditSum
+                actual_spend = {
+                    row['category']: row['total']
+                    for row in Transaction.objects.filter(
+                        user=user,
+                        type='Expense',
+                        date__range=[start_date, end_date]
+                    ).values('category').annotate(total=AuditSum('amount'))
+                }
+
                 goals_summary = ""
                 if goals:
-                    goal_lines = [
-                        f"  - {g.get_category_display()}: ₦{g.target_amount:,.0f} monthly budget"
-                        for g in goals
-                    ]
-                    goals_summary = "User's monthly budget goals:\n" + "\n".join(goal_lines)
+                    goal_lines = []
+                    for g in goals:
+                        spent    = actual_spend.get(g.category, 0)
+                        target   = g.target_amount
+                        pct      = int((float(spent) / float(target) * 100)) if target else 0
+                        status   = "OVER BUDGET" if spent > target else (
+                                   "NEAR LIMIT"  if pct >= 80 else "OK")
+                        goal_lines.append(
+                            f"  - {g.get_category_display()}: "
+                            f"spent ₦{spent:,.0f} of ₦{target:,.0f} target "
+                            f"({pct}% — {status})"
+                        )
+                    goals_summary = (
+                        "User's budget goals vs actual spending this period:\n"
+                        + "\n".join(goal_lines)
+                    )
 
                 results = audit_subscriptions(combined, start_date_str, end_date_str, goals_summary)
                 if results is None:

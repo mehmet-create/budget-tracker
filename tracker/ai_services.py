@@ -124,11 +124,13 @@ def audit_subscriptions(transaction_text: str, start_date: str = None, end_date:
     prompt = f"""You are a personal finance assistant helping a Nigerian user analyse their bank transactions.
 {period_note}
 {goals_block}
+IMPORTANT: If budget goals vs actual spending are listed above, use THOSE EXACT NUMBERS.
+Do NOT recalculate spending from the transaction lines — the numbers above are already correct.
+
 Analyse the following transactions and identify:
 1. Recurring subscriptions (Netflix, DSTV, Spotify, GOtv, Showmax, betting apps, etc.)
 2. Potential duplicate payments (same service charged more than once)
 3. Any unusual or unexpected charges worth flagging
-4. If budget goals are listed above: mention which categories are over or near their limit
 
 Transactions:
 {transaction_text}
@@ -145,14 +147,14 @@ Return a valid JSON object exactly like this structure:
     }}
   ],
   "total_subscription_spend": 12000,
-  "summary": "One paragraph: what subscriptions were found, total cost, and how spending compares to the budget goals if provided."
+  "summary": "2-3 sentences: (1) what subscriptions were found and total cost, (2) use the exact goal numbers provided above to name which categories are OVER BUDGET or NEAR LIMIT, (3) one actionable tip."
 }}
 
 Rules:
 - "status" must be one of: "Active", "Potential Duplicate", "Review"
 - "cost" must be a plain number (no currency symbols)
 - If no subscriptions found, return empty list with a helpful summary
-- ALWAYS reference budget goals in the summary when they are provided
+- Use the pre-computed spending numbers from the goals section — never recalculate from transactions
 - Return ONLY the JSON, no markdown fences"""
 
     try:
