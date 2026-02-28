@@ -15,11 +15,11 @@ User = get_user_model()
 
 class SignUpForm(forms.ModelForm):
     password = forms.CharField(
-        widget=forms.PasswordInput(attrs={"class": "form-control"}),
+        widget=forms.PasswordInput(attrs={"class": "form-control", "autocomplete": "off"}, render_value=False),
         label="Password"
     )
     confirm_password = forms.CharField(
-        widget=forms.PasswordInput(attrs={"class": "form-control"}),
+        widget=forms.PasswordInput(attrs={"class": "form-control", "autocomplete": "off"}, render_value=False),
         label="Confirm Password"
     )
     first_name = forms.CharField(

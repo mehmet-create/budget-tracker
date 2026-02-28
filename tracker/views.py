@@ -472,7 +472,9 @@ class CustomPasswordResetView(PasswordResetView):
         }
         # Call form.save() once only — super().form_valid() would call it again
         try:
+            logger.info(f"Password reset requested for: {form.cleaned_data.get('email')} | Backend: {settings.EMAIL_PROVIDER} | Host: {settings.EMAIL_HOST}")
             form.save(**opts)
+            logger.info(f"Password reset email sent successfully for: {form.cleaned_data.get('email')}")
         except Exception as exc:
             logger.exception("Password reset email dispatch failed: %s", exc)
             if is_json_request(self.request):
